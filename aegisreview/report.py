@@ -63,78 +63,131 @@ def _related(f: Finding) -> list[str]:
     return out
 
 
+# ----------------------------------------------------------------------- shared text
+# Structure follows the organizers' templates/SAMPLE-REPORT.md: same sections, order, field names.
+CONFIDENCE_TEXT = {
+    "confirmed": "the weakness is directly evident in the code shown.",
+    "needs_validation": "the weakness is plausible but depends on context outside the analyzed code.",
+}
+NO_SNIPPET = "No code-level change applies to this finding; follow the recommended fix above."
+SCOPE_FIXED = [
+    "Static code review only",
+    "No exploit execution",
+    "No runtime penetration testing",
+    "No guarantee that every vulnerability is found",
+    "Some findings may require manual confirmation",
+]
+CONCLUSION = [
+    "Address high-impact issues first and validate the remediation using appropriate testing.",
+    "A follow-up security review is recommended after the changes are implemented.",
+]
+
+
+def _count_rows(findings: list[Finding]) -> list[tuple[str, int]]:
+    c = severity_counts(findings)
+    rows = [("Critical", c["critical"]), ("High", c["high"]), ("Medium", c["medium"]), ("Low", c["low"])]
+    if c["info"]:
+        rows.append(("Informational", c["info"]))
+    return rows
+
+
+def _exec_summary(asm: Assessment) -> str:
+    text = (asm.executive_summary or "No summary available.").strip()
+    return text + " AI-assisted findings should be validated before being treated as confirmed vulnerabilities."
+
+
+def _category(f: Finding) -> str:
+    return f.category or "n/a"
+
+
+def _cwe(f: Finding) -> str:
+    base = f.cwe or "n/a"
+    return f"{base} (OWASP Top 10: {f.owasp})" if f.owasp else base
+
+
+def _confidence(f: Finding) -> str:
+    return f"{f.confidence.capitalize()} — {CONFIDENCE_TEXT[f.status]}"
+
+
+def _validation(f: Finding) -> str:
+    parts = []
+    if f.validation_notes:
+        parts.append(f.validation_notes)
+    rel = [r.replace("`", "") for r in _related(f)]
+    if rel:
+        parts.append("Related locations: " + "; ".join(rel) + ".")
+    return " ".join(parts) or "No further validation is needed beyond reviewing the recommended fix in context."
+
+
+def _short_action(f: Finding) -> str:
+    return f.remediation.split(". ")[0].rstrip(".") if f.remediation else "Review"
+
+
+def _scope_extras(asm: Assessment) -> list[str]:
+    st = asm.stats
+    out = [
+        f"Analyzed {st.get('files_analyzed', 0)} source files ({st.get('lines_analyzed', 0)} lines); "
+        f"{st.get('secrets_redacted', 0)} secret-like value(s) were redacted before AI analysis",
+        f"AI model: {asm.model}",
+        "Every reported finding's quoted evidence was checked programmatically against the cited file and line",
+        f"AI review candidates: {st.get('candidates', 0)}; dropped because evidence could not be verified: "
+        f"{st.get('dropped_unverifiable', 0)}; rejected during lead review: {st.get('rejected_by_review', 0)}; "
+        f"merged as duplicates: {st.get('merged_duplicates', 0)}",
+    ]
+    out += [f"Note: {w}" for w in asm.warnings]
+    out += [f"Rejected candidate: {r['title']} ({r['file']}:{r['line']}): {r['reason']}" for r in asm.rejected]
+    return out
+
+
+def _overall(asm: Assessment) -> tuple[str, list[str], str]:
+    head = f"Overall risk rating: {risk_rating(asm.findings)}."
+    tail = "The report is an AI-assisted source-code assessment, not a complete penetration test."
+    return head, asm.priorities, tail
+
+
 # ----------------------------------------------------------------------- Markdown
 def render_markdown(asm: Assessment) -> str:
-    c = severity_counts(asm.findings)
     out = ["# Security Assessment Report", "",
            "## 1. Assessment Information", "",
            f"**Application:** {asm.app_name}", "",
            "**Assessment Type:** AI-Assisted Static Code Review", "",
            f"**Assessment Date:** {asm.date}", "",
            f"**Tool Name:** AegisReview v{asm.tool_version}", "",
-           f"**AI Model:** {asm.model}", "",
-           f"**Overall Risk Rating:** {risk_rating(asm.findings)}", "",
-           "## 2. Executive Summary", "", asm.executive_summary or "No summary available.", ""]
-    if asm.priorities:
-        out += ["**Top priorities**", ""] + [f"{i}. {p}" for i, p in enumerate(asm.priorities, 1)] + [""]
-    for w in asm.warnings:
-        out += [f"> Note: {w}", ""]
-    out += ["## 3. Findings Summary", "", "| Severity | Count |", "|---|---:|"]
-    out += [f"| {s.capitalize()} | {c[s]} |" for s in SEVERITIES]
-    out += [f"| **Total** | **{len(asm.findings)}** |", ""]
-    if asm.findings:
-        out += ["| ID | Severity | Title | Location | Status |", "|---|---|---|---|---|"]
-        for f in asm.findings:
-            out.append(f"| {f.id} | {f.severity.capitalize()} | {_cell(f.title)} | `{f.file}` {loc(f)} | {STATUS_LABEL[f.status]} |")
-        out.append("")
-    out += ["## 4. Detailed Findings", ""]
+           "## 2. Executive Summary", "", _exec_summary(asm), "",
+           "## 3. Findings Summary", "", "| Severity | Count |", "|---|---:|"]
+    out += [f"| {name} | {n} |" for name, n in _count_rows(asm.findings)]
+    out += [f"| **Total** | **{len(asm.findings)}** |", "", "## 4. Detailed Findings", ""]
     if not asm.findings:
         out += ["No findings met the evidence bar in the analyzed source code.", ""]
-    for f in asm.findings:
+    for i, f in enumerate(asm.findings, 1):
         lang = asm.languages.get(f.file, "")
-        out += [f"### {f.id}: {f.title}", "",
-                f"**Severity:** {f.severity.capitalize()}  ", f"**Category:** {f.category or 'n/a'}  ",
-                f"**CWE:** {f.cwe or 'n/a'}  ", f"**OWASP:** {f.owasp or 'n/a'}  ",
-                f"**Affected File:** `{f.file}`  ", f"**Code Location:** {loc(f)}  ",
-                f"**Status:** {STATUS_LABEL[f.status]}  ", f"**Confidence:** {f.confidence.capitalize()}", "",
+        out += [f"### Finding {i}: {f.title}", "",
+                f"**Finding ID:** {f.id}", "",
+                f"**Severity:** {f.severity.capitalize()}", "",
+                f"**Category:** {_category(f)}", "",
+                f"**CWE:** {_cwe(f)}", "",
+                f"**Affected File:** `{f.file}`", "",
+                f"**Code Location:** {loc(f)}", "",
                 "#### Description", "", f.description or "n/a", "",
                 "#### Vulnerable Code", "", _fence(snippet(asm, f), lang), "",
                 "#### Potential Impact", "", f.impact or "n/a", "",
-                "#### Recommended Fix", "", f.remediation or "n/a", ""]
-        if f.secure_code.strip():
-            out += ["#### Secure Code Example", "", _fence(f.secure_code, lang), ""]
-        if f.validation_notes:
-            out += ["#### Validation Notes", "", f.validation_notes, ""]
-        rel = _related(f)
-        if rel:
-            out += ["#### Related Locations", ""] + [f"- {r}" for r in rel] + [""]
-    out += ["## 5. Remediation Summary", ""]
-    if asm.findings:
-        out += ["| Finding | Severity | Recommended Action |", "|---|---|---|"]
-        for f in asm.findings:
-            first = f.remediation.split(". ")[0].rstrip(".") if f.remediation else "Review"
-            out.append(f"| {f.id} | {f.severity.capitalize()} | {_cell(first)} |")
-    else:
-        out.append("No remediation required for the analyzed scope.")
-    out += ["", "## 6. Overall Assessment", "", asm.overall_assessment or "n/a", "",
-            "## 7. Scope and Limitations", "",
-            "- Static code review only; no exploit execution or runtime testing",
-            "- AI-generated findings should be validated before being treated as confirmed vulnerabilities",
-            "- Every reported finding's quoted evidence was checked programmatically against the cited file and line",
-            "- No guarantee that every vulnerability was found",
-            f"- Files analyzed: {asm.stats.get('files_analyzed', 0)} ({asm.stats.get('lines_analyzed', 0)} lines)",
-            f"- Secret-like values redacted before AI analysis: {asm.stats.get('secrets_redacted', 0)}",
-            f"- AI review candidates: {asm.stats.get('candidates', 0)}; dropped because evidence could not be verified: "
-            f"{asm.stats.get('dropped_unverifiable', 0)}; rejected during lead review: {asm.stats.get('rejected_by_review', 0)}; merged as duplicates: {asm.stats.get('merged_duplicates', 0)}", ""]
-    if asm.rejected:
-        out += ["### Candidates rejected during review", "", "| Candidate | Location | Reason |", "|---|---|---|"]
-        for r in asm.rejected:
-            out.append(f"| {_cell(r['title'])} | `{r['file']}`:{r['line']} | {_cell(r['reason'])} |")
-        out.append("")
-    out += ["## 8. Conclusion", "",
-            "Address high-impact issues first and validate each remediation with appropriate testing. "
-            "A follow-up review is recommended after the changes are applied.", ""]
-    return "\n".join(out)
+                "#### Recommended Fix", "", f.remediation or "n/a", "",
+                "#### Secure Code Example", "",
+                _fence(f.secure_code, lang) if f.secure_code.strip() else NO_SNIPPET, "",
+                "#### Confidence", "", _confidence(f), "",
+                "#### Validation Notes", "", _validation(f), ""]
+    out += ["## 5. Remediation Summary", "", "| Finding | Severity | Recommended Action |", "|---|---|---|"]
+    out += [f"| {f.id} | {f.severity.capitalize()} | {_cell(_short_action(f))} |" for f in asm.findings]
+    head, prios, tail = _overall(asm)
+    out += ["", "## 6. Overall Assessment", "", head, "", asm.overall_assessment or "n/a", ""]
+    if prios:
+        out += ["Recommended order of work:", ""] + [f"{i}. {p}" for i, p in enumerate(prios, 1)] + [""]
+    out += [tail, "", "## 7. Scope and Limitations", ""]
+    out += [f"- {b}" for b in SCOPE_FIXED + _scope_extras(asm)]
+    out += ["", "## 8. Conclusion", ""]
+    for para in CONCLUSION:
+        out += [para, ""]
+    return "\n".join(out).rstrip() + "\n"
 
 
 # ----------------------------------------------------------------------- HTML
@@ -142,91 +195,66 @@ def _e(x) -> str:
     return html.escape(str(x), quote=True)
 
 
+def _p(text: str) -> str:
+    return "<p>" + _e(text).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+
+
 def render_html(asm: Assessment) -> str:
-    c = severity_counts(asm.findings)
     h = [f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Security Assessment: {_e(asm.app_name)}</title>
 <style>
 body{{font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;color:#0f172a;max-width:960px;margin:0 auto;padding:24px;background:#f8fafc}}
 h1{{margin:0 0 4px}}h2{{margin-top:36px;border-bottom:2px solid #e2e8f0;padding-bottom:6px}}
-.meta{{color:#475569}}.card{{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin:16px 0}}
+.card{{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin:16px 0}}
 .badge{{display:inline-block;color:#fff;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;text-transform:uppercase}}
-.pill{{display:inline-block;background:#e2e8f0;border-radius:6px;padding:1px 8px;font-size:12px;margin-right:6px}}
-.counts{{display:flex;gap:10px;flex-wrap:wrap}}.counts div{{flex:1;min-width:100px;text-align:center;border-radius:10px;color:#fff;padding:10px}}
-.counts b{{display:block;font-size:26px}}
+.fields p{{margin:4px 0}}
 pre{{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto;font-size:13px}}
 .good pre{{background:#052e16}}table{{border-collapse:collapse;width:100%;background:#fff}}th,td{{border:1px solid #e2e8f0;padding:6px 10px;text-align:left;font-size:14px}}
 th{{background:#f1f5f9}}td:first-child,th:first-child{{white-space:nowrap}}code{{background:#e2e8f0;padding:1px 5px;border-radius:4px}}pre code{{background:none;padding:0}}
-.note{{background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin:10px 0}}
+.sev{{max-width:360px}}.sev td:last-child,.sev th:last-child{{text-align:right}}
 @media print{{body{{background:#fff}}.card{{break-inside:avoid}}}}
 </style></head><body>
 <h1>Security Assessment Report</h1>
-<p class="meta"><b>{_e(asm.app_name)}</b> &middot; AI-assisted static code review &middot; {_e(asm.date)} &middot;
-AegisReview v{_e(asm.tool_version)} &middot; model: {_e(asm.model)}</p>
-<div class="card"><b>Overall risk rating: {_e(risk_rating(asm.findings))}</b></div>
-<h2>Executive Summary</h2><div class="card"><p>{_e(asm.executive_summary or 'No summary available.')}</p>"""]
-    if asm.priorities:
-        h.append("<b>Top priorities</b><ol>" + "".join(f"<li>{_e(p)}</li>" for p in asm.priorities) + "</ol>")
-    h.append("</div>")
-    for w in asm.warnings:
-        h.append(f'<div class="note">Note: {_e(w)}</div>')
-    h.append('<h2>Findings Summary</h2><div class="counts">')
-    for s in SEVERITIES:
-        h.append(f'<div style="background:{SEV_COLOR[s]}"><b>{c[s]}</b>{s.capitalize()}</div>')
-    h.append("</div>")
-    if asm.findings:
-        h.append("<table><tr><th>ID</th><th>Severity</th><th>Title</th><th>Location</th><th>Status</th></tr>")
-        for f in asm.findings:
-            h.append(f'<tr><td><a href="#{_e(f.id)}">{_e(f.id)}</a></td><td>{_e(f.severity.capitalize())}</td><td>{_e(f.title)}</td>'
-                     f'<td><code>{_e(f.file)}</code> {_e(loc(f))}</td><td>{_e(STATUS_LABEL[f.status])}</td></tr>')
-        h.append("</table>")
-    h.append("<h2>Detailed Findings</h2>")
+<h2>1. Assessment Information</h2>
+<div class="card fields"><p><b>Application:</b> {_e(asm.app_name)}</p>
+<p><b>Assessment Type:</b> AI-Assisted Static Code Review</p>
+<p><b>Assessment Date:</b> {_e(asm.date)}</p>
+<p><b>Tool Name:</b> AegisReview v{_e(asm.tool_version)}</p></div>
+<h2>2. Executive Summary</h2><div class="card">{_p(_exec_summary(asm))}</div>
+<h2>3. Findings Summary</h2>
+<table class="sev"><tr><th>Severity</th><th>Count</th></tr>"""]
+    for name, n in _count_rows(asm.findings):
+        h.append(f"<tr><td>{name}</td><td>{n}</td></tr>")
+    h.append(f"<tr><td><b>Total</b></td><td><b>{len(asm.findings)}</b></td></tr></table>")
+    h.append("<h2>4. Detailed Findings</h2>")
     if not asm.findings:
         h.append("<p>No findings met the evidence bar in the analyzed source code.</p>")
-    for f in asm.findings:
+    for i, f in enumerate(asm.findings, 1):
         h.append(f'<div class="card" id="{_e(f.id)}"><h3><span class="badge" style="background:{SEV_COLOR[f.severity]}">{_e(f.severity)}</span> '
-                 f'{_e(f.id)}: {_e(f.title)}</h3>'
-                 f'<p><span class="pill">{_e(f.category or "n/a")}</span><span class="pill">{_e(f.cwe or "n/a")}</span>'
-                 f'<span class="pill">{_e(f.owasp or "OWASP n/a")}</span><span class="pill">{_e(STATUS_LABEL[f.status])}</span>'
-                 f'<span class="pill">confidence: {_e(f.confidence)}</span></p>'
-                 f'<p><b>Affected file:</b> <code>{_e(f.file)}</code> ({_e(loc(f))})</p>'
-                 f'<h4>Description</h4><p>{_e(f.description)}</p>'
-                 f'<h4>Vulnerable code</h4><pre><code>{_e(snippet(asm, f))}</code></pre>'
-                 f'<h4>Potential impact</h4><p>{_e(f.impact)}</p>'
-                 f'<h4>Recommended fix</h4><p>{_e(f.remediation)}</p>')
+                 f'Finding {i}: {_e(f.title)}</h3><div class="fields">'
+                 f'<p><b>Finding ID:</b> {_e(f.id)}</p><p><b>Severity:</b> {_e(f.severity.capitalize())}</p>'
+                 f'<p><b>Category:</b> {_e(_category(f))}</p><p><b>CWE:</b> {_e(_cwe(f))}</p>'
+                 f'<p><b>Affected File:</b> <code>{_e(f.file)}</code></p><p><b>Code Location:</b> {_e(loc(f))}</p></div>'
+                 f'<h4>Description</h4>{_p(f.description or "n/a")}'
+                 f'<h4>Vulnerable Code</h4><pre><code>{_e(snippet(asm, f))}</code></pre>'
+                 f'<h4>Potential Impact</h4>{_p(f.impact or "n/a")}'
+                 f'<h4>Recommended Fix</h4>{_p(f.remediation or "n/a")}')
         if f.secure_code.strip():
-            h.append(f'<div class="good"><h4>Secure code example</h4><pre><code>{_e(f.secure_code)}</code></pre></div>')
-        if f.validation_notes:
-            h.append(f"<h4>Validation notes</h4><p>{_e(f.validation_notes)}</p>")
-        rel = _related(f)
-        if rel:
-            h.append("<h4>Related locations</h4><ul>" + "".join(f"<li>{r.replace('`', '')}</li>" for r in map(_e, rel)) + "</ul>")
-        h.append("</div>")
-    h.append("<h2>Remediation Summary</h2>")
-    if asm.findings:
-        h.append("<table><tr><th>Finding</th><th>Severity</th><th>Recommended action</th></tr>")
-        for f in asm.findings:
-            first = f.remediation.split(". ")[0].rstrip(".") if f.remediation else "Review"
-            h.append(f"<tr><td>{_e(f.id)}</td><td>{_e(f.severity.capitalize())}</td><td>{_e(first)}</td></tr>")
-        h.append("</table>")
-    h.append(f"<h2>Overall Assessment</h2><div class='card'><p>{_e(asm.overall_assessment or 'n/a').replace(chr(10), '<br>')}</p></div>")
-    h.append("<h2>Scope and Limitations</h2><ul>"
-             "<li>Static code review only; no exploit execution or runtime testing</li>"
-             "<li>AI-generated findings should be validated before being treated as confirmed vulnerabilities</li>"
-             "<li>Every reported finding's quoted evidence was checked programmatically against the cited file and line</li>"
-             "<li>No guarantee that every vulnerability was found</li>"
-             f"<li>Files analyzed: {asm.stats.get('files_analyzed', 0)} ({asm.stats.get('lines_analyzed', 0)} lines); "
-             f"secret-like values redacted before AI analysis: {asm.stats.get('secrets_redacted', 0)}</li>"
-             f"<li>AI candidates: {asm.stats.get('candidates', 0)}; dropped (evidence not verifiable): {asm.stats.get('dropped_unverifiable', 0)}; "
-             f"rejected during lead review: {asm.stats.get('rejected_by_review', 0)}; merged as duplicates: {asm.stats.get('merged_duplicates', 0)}</li></ul>")
-    if asm.rejected:
-        h.append("<h3>Candidates rejected during review</h3><table><tr><th>Candidate</th><th>Location</th><th>Reason</th></tr>")
-        for r in asm.rejected:
-            h.append(f"<tr><td>{_e(r['title'])}</td><td><code>{_e(r['file'])}</code>:{_e(r['line'])}</td><td>{_e(r['reason'])}</td></tr>")
-        h.append("</table>")
-    h.append("<h2>Conclusion</h2><p>Address high-impact issues first and validate each remediation with appropriate testing. "
-             "A follow-up review is recommended after the changes are applied.</p></body></html>")
+            h.append(f'<h4>Secure Code Example</h4><div class="good"><pre><code>{_e(f.secure_code)}</code></pre></div>')
+        else:
+            h.append(f"<h4>Secure Code Example</h4>{_p(NO_SNIPPET)}")
+        h.append(f"<h4>Confidence</h4>{_p(_confidence(f))}<h4>Validation Notes</h4>{_p(_validation(f))}</div>")
+    h.append("<h2>5. Remediation Summary</h2><table><tr><th>Finding</th><th>Severity</th><th>Recommended Action</th></tr>")
+    for f in asm.findings:
+        h.append(f"<tr><td>{_e(f.id)}</td><td>{_e(f.severity.capitalize())}</td><td>{_e(_short_action(f))}</td></tr>")
+    head, prios, tail = _overall(asm)
+    h.append("</table><h2>6. Overall Assessment</h2><div class='card'>" + _p(head) + _p(asm.overall_assessment or "n/a"))
+    if prios:
+        h.append("<p>Recommended order of work:</p><ol>" + "".join(f"<li>{_e(p)}</li>" for p in prios) + "</ol>")
+    h.append(_p(tail) + "</div><h2>7. Scope and Limitations</h2><ul>"
+             + "".join(f"<li>{_e(b)}</li>" for b in SCOPE_FIXED + _scope_extras(asm)) + "</ul>")
+    h.append("<h2>8. Conclusion</h2>" + "".join(_p(c) for c in CONCLUSION) + "</body></html>")
     return "\n".join(h)
 
 

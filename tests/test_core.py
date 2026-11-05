@@ -153,9 +153,8 @@ class DedupeTests(unittest.TestCase):
         self.assertEqual(len(out[0].related), 1)
 
 
-class ProviderTests(unittest.TestCase):
-    KEYS = ["AI_PROVIDER", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_MODEL", "GEMINI_MODEL",
-            "AI_MIN_INTERVAL_SECONDS", "AI_FALLBACK_MODELS", "ANTHROPIC_FALLBACK_MODELS"]
+class ClientTests(unittest.TestCase):
+    KEYS = ["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "AI_MIN_INTERVAL_SECONDS", "ANTHROPIC_FALLBACK_MODELS"]
 
     def _settings(self, **env):
         import os
@@ -166,35 +165,18 @@ class ProviderTests(unittest.TestCase):
         with mock.patch.dict(os.environ, base), mock.patch("aegisreview.config.load_env_file"):
             return load_settings()
 
-    def test_provider_selection_and_defaults(self):
-        s = self._settings(AI_PROVIDER="anthropic", ANTHROPIC_API_KEY="k")
-        self.assertEqual((s.provider, s.model, s.min_interval), ("anthropic", "claude-sonnet-5-5", 1.0))
-        self.assertEqual(self._settings(ANTHROPIC_API_KEY="k").provider, "anthropic")
-        self.assertEqual(self._settings(ANTHROPIC_API_KEY="k", GEMINI_API_KEY="g").provider, "gemini")
-        g = self._settings(GEMINI_API_KEY="g")
-        self.assertEqual((g.provider, g.min_interval), ("gemini", 13.0))
+    def test_defaults(self):
+        s = self._settings(ANTHROPIC_API_KEY="k")
+        self.assertEqual((s.model, s.min_interval, s.fallback_models), ("claude-sonnet-5-5", 1.0, []))
+        s = self._settings(ANTHROPIC_API_KEY="k", ANTHROPIC_MODEL="m2", ANTHROPIC_FALLBACK_MODELS="a, b")
+        self.assertEqual((s.model, s.fallback_models), ("m2", ["a", "b"]))
 
     def test_placeholder_key_is_rejected_before_any_network_use(self):
         from aegisreview.ai import AIError, make_client
-        s = self._settings(AI_PROVIDER="anthropic", ANTHROPIC_API_KEY="PASTE_YOUR_ANTHROPIC_KEY_HERE")
         with self.assertRaises(AIError):
-            make_client(s)
-
-    def test_cache_keys_are_separate_per_provider_but_gemini_is_backward_compatible(self):
-        import hashlib
-        from aegisreview.ai import BaseClient
-
-        class A(BaseClient):
-            provider = "anthropic"
-
-        class G(BaseClient):
-            provider = "gemini"
-
-        s = self._settings(GEMINI_API_KEY="g")
-        s.cache_dir = "/tmp/x"
-        legacy = hashlib.sha256(("sys" + "\0" + "prompt").encode()).hexdigest() + ".json"
-        self.assertEqual(G(s)._cache_path("sys", "prompt").name, legacy)
-        self.assertNotEqual(A(s)._cache_path("sys", "prompt").name, legacy)
+            make_client(self._settings(ANTHROPIC_API_KEY="PASTE_YOUR_ANTHROPIC_KEY_HERE"))
+        with self.assertRaises(AIError):
+            make_client(self._settings())
 
     def test_error_classification(self):
         from aegisreview.ai import BaseClient
@@ -204,7 +186,7 @@ class ProviderTests(unittest.TestCase):
                 super().__init__("boom")
                 self.status_code = code
 
-        c = BaseClient(self._settings(GEMINI_API_KEY="g"))
+        c = BaseClient(self._settings(ANTHROPIC_API_KEY="k"))
         self.assertEqual(c._classify(E(529), False), (True, False))
         self.assertEqual(c._classify(E(429), False), (True, True))
         self.assertEqual(c._classify(E(400), False), (False, False))
@@ -226,9 +208,35 @@ class CacheModelTests(unittest.TestCase):
                 return '{"findings":[{"title":"x"}]}'
 
         with tempfile.TemporaryDirectory() as d:
-            s = Settings("anthropic", "k", "m1", [], 0, 0.0, 0.0, 5, 1, None, 100, d)
+            s = Settings("k", "m1", [], 0, 0.0, 0.0, 5, 1, None, 100, d)
             c = Fake(s)
             r1 = c.generate_json("sys", "prompt")
             r2 = c.generate_json("sys", "prompt")
             self.assertEqual(r1, r2)
             self.assertEqual((Fake.calls, c.cache_hits, c.used["m1"]), (1, 1, 2))
+
+
+class TemplateStructureTests(unittest.TestCase):
+    """The Markdown report must follow the hackathon's SAMPLE-REPORT template structure."""
+
+    def test_markdown_matches_template_structure(self):
+        import re
+        f = Finding(id="AR-001", title="T", severity="high", status="confirmed", file="a.js", line_start=1, line_end=1,
+                    category="Injection", cwe="CWE-89", description="d", impact="i", remediation="Fix.", secure_code="ok()")
+        asm = Assessment("demo", "2026-11-04", "1.0.0", "m", True, findings=[f], executive_summary="s",
+                         overall_assessment="o", file_lines={"a.js": ["bad()"]}, languages={"a.js": "javascript"})
+        md = render_markdown(asm)
+        heads = [l for l in md.splitlines() if re.match(r"^#{1,4} ", l)]
+        norm = [re.sub(r"Finding \d+: .*", "Finding N: <title>", h) for h in heads]
+        self.assertEqual(norm, [
+            "# Security Assessment Report",
+            "## 1. Assessment Information", "## 2. Executive Summary", "## 3. Findings Summary",
+            "## 4. Detailed Findings", "### Finding N: <title>",
+            "#### Description", "#### Vulnerable Code", "#### Potential Impact", "#### Recommended Fix",
+            "#### Secure Code Example", "#### Confidence", "#### Validation Notes",
+            "## 5. Remediation Summary", "## 6. Overall Assessment", "## 7. Scope and Limitations", "## 8. Conclusion"])
+        fields = re.findall(r"^\*\*([^*]+):\*\*", md, re.M)
+        self.assertEqual(fields, ["Application", "Assessment Type", "Assessment Date", "Tool Name", "Finding ID",
+                                  "Severity", "Category", "CWE", "Affected File", "Code Location"])
+        self.assertIn("| Severity | Count |", md)
+        self.assertIn("| Finding | Severity | Recommended Action |", md)
