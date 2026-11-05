@@ -349,6 +349,7 @@ def analyze(tree: SourceTree, settings: Settings, use_ai: bool = True, lenses: l
             final = _heuristic_dedupe(verified)
         asm.model = _models_label(client, settings)
     asm.findings = _finalize(final)
+    asm.stats["merged_duplicates"] = max(0, len(verified) - len(asm.findings) - len(asm.rejected))
     asm.executive_summary = summary or _default_summary(asm.findings)
     asm.overall_assessment = overall or _default_overall(asm.findings)
     asm.priorities = prios
@@ -356,10 +357,9 @@ def analyze(tree: SourceTree, settings: Settings, use_ai: bool = True, lenses: l
 
 
 def _models_label(client: BaseClient, settings: Settings) -> str:
-    live = [m for m, _ in client.used.most_common() if m != "cached response"]
-    cached = client.used.get("cached response", 0) > 0
-    label = ", ".join(live) if live else client.label
-    return f"{label} (some responses reused from cache)" if cached else label
+    names = [m for m, _ in client.used.most_common()]
+    label = ", ".join(names) if names else client.label
+    return f"{label} (some responses reused from cache)" if client.cache_hits else label
 
 
 def _tidy_related(f: Finding) -> None:
@@ -375,6 +375,8 @@ def _tidy_related(f: Finding) -> None:
         note_tokens = _tokens(r.get("note", ""))
         similar = bool(primary_tokens and note_tokens) and len(primary_tokens & note_tokens) / len(primary_tokens | note_tokens) >= 0.5
         if near and similar:
+            continue
+        if any(o["file"] == r["file"] and abs(o["line_start"] - r["line_start"]) <= 2 for o in out):
             continue
         out.append(r)
     f.related = out

@@ -10,7 +10,7 @@
 
 **Tool Name:** AegisReview v1.0.0
 
-**AI Model:** claude-sonnet-5-5
+**AI Model:** claude-sonnet-5-5 (some responses reused from cache)
 
 **Overall Risk Rating:** Critical
 
@@ -609,7 +609,6 @@ return Response.json({ error: "Unable to update task" }, { status: 500, headers:
 #### Related Locations
 
 - `supabase/functions/get-profile/index.ts:43` (Returns String(error) to the client)
-- `supabase/functions/get-profile/index.ts:42` (Same String(error) leak)
 
 ### AR-012: Profiles readable by all authenticated users (all columns)
 
@@ -687,7 +686,7 @@ Fix the unauthenticated and injectable functions first, since they are directly 
 - No guarantee that every vulnerability was found
 - Files analyzed: 18 (951 lines)
 - Secret-like values redacted before AI analysis: 1
-- AI review candidates: 32; dropped because evidence could not be verified: 0; rejected during lead review: 0
+- AI review candidates: 32; dropped because evidence could not be verified: 0; rejected during lead review: 0; merged as duplicates: 20
 
 ## 8. Conclusion
 

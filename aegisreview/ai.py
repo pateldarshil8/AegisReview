@@ -60,6 +60,7 @@ class BaseClient:
         self._lock = threading.Lock()
         self._next_ok = 0.0
         self.used: Counter = Counter()
+        self.cache_hits = 0
 
     # ---- provider hooks
     def _call(self, model: str, system: str, prompt: str) -> str:  # pragma: no cover
@@ -109,17 +110,21 @@ class BaseClient:
         if cache is not None and cache.is_file():
             try:
                 data = json.loads(cache.read_text(encoding="utf-8"))
-                self.used["cached response"] += 1
+                model = None
+                if isinstance(data, dict) and data.get("_aegis_cache") == 1:
+                    model, data = data.get("model"), data.get("result")
+                self.used[model or self.s.model] += 1  # entries from older versions do not record the model
+                self.cache_hits += 1
                 print(f"  [{label}] using cached AI response", file=sys.stderr)
                 return data
             except (OSError, json.JSONDecodeError):
                 pass
-        result = self._generate_json_uncached(system, prompt, label)
+        result, model = self._generate_json_uncached(system, prompt, label)
         empty = isinstance(result, dict) and result.get("findings") == []
         if cache is not None and not empty:  # never cache "found nothing": it may be a weak or failed answer
             try:
                 cache.parent.mkdir(parents=True, exist_ok=True)
-                cache.write_text(json.dumps(result), encoding="utf-8")
+                cache.write_text(json.dumps({"_aegis_cache": 1, "model": model, "result": result}), encoding="utf-8")
             except OSError:
                 pass
         return result
@@ -135,7 +140,7 @@ class BaseClient:
                 self._throttle()
                 result = parse_json_text(self._call(model, system, prompt))
                 self.used[model] += 1
-                return result
+                return result, model
             except ValueError as e:
                 last = e
             except Exception as e:  # noqa: BLE001

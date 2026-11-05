@@ -4,7 +4,7 @@
   "tool": {
     "name": "AegisReview",
     "version": "1.0.0",
-    "model": "claude-sonnet-5-5",
+    "model": "claude-sonnet-5-5 (some responses reused from cache)",
     "ai_used": true
   },
   "risk_rating": "Critical",
@@ -297,12 +297,6 @@
           "line_start": 43,
           "line_end": 46,
           "note": "Returns String(error) to the client"
-        },
-        {
-          "file": "supabase/functions/get-profile/index.ts",
-          "line_start": 42,
-          "line_end": 47,
-          "note": "Same String(error) leak"
         }
       ],
       "source": "ai",
@@ -341,7 +335,8 @@
     "ai_calls_failed": 0,
     "candidates": 32,
     "dropped_unverifiable": 0,
-    "rejected_by_review": 0
+    "rejected_by_review": 0,
+    "merged_duplicates": 20
   },
   "warnings": []
 }

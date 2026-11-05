@@ -209,3 +209,26 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(c._classify(E(429), False), (True, True))
         self.assertEqual(c._classify(E(400), False), (False, False))
         self.assertEqual(c._classify(E(404), True)[0], True)
+
+
+class CacheModelTests(unittest.TestCase):
+    def test_cache_records_model_and_roundtrips(self):
+        import tempfile
+        from aegisreview.ai import BaseClient
+        from aegisreview.config import Settings
+
+        class Fake(BaseClient):
+            provider = "anthropic"
+            calls = 0
+
+            def _call(self, model, system, prompt):
+                Fake.calls += 1
+                return '{"findings":[{"title":"x"}]}'
+
+        with tempfile.TemporaryDirectory() as d:
+            s = Settings("anthropic", "k", "m1", [], 0, 0.0, 0.0, 5, 1, None, 100, d)
+            c = Fake(s)
+            r1 = c.generate_json("sys", "prompt")
+            r2 = c.generate_json("sys", "prompt")
+            self.assertEqual(r1, r2)
+            self.assertEqual((Fake.calls, c.cache_hits, c.used["m1"]), (1, 1, 2))

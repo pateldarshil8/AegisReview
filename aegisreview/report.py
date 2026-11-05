@@ -125,7 +125,7 @@ def render_markdown(asm: Assessment) -> str:
             f"- Files analyzed: {asm.stats.get('files_analyzed', 0)} ({asm.stats.get('lines_analyzed', 0)} lines)",
             f"- Secret-like values redacted before AI analysis: {asm.stats.get('secrets_redacted', 0)}",
             f"- AI review candidates: {asm.stats.get('candidates', 0)}; dropped because evidence could not be verified: "
-            f"{asm.stats.get('dropped_unverifiable', 0)}; rejected during lead review: {asm.stats.get('rejected_by_review', 0)}", ""]
+            f"{asm.stats.get('dropped_unverifiable', 0)}; rejected during lead review: {asm.stats.get('rejected_by_review', 0)}; merged as duplicates: {asm.stats.get('merged_duplicates', 0)}", ""]
     if asm.rejected:
         out += ["### Candidates rejected during review", "", "| Candidate | Location | Reason |", "|---|---|---|"]
         for r in asm.rejected:
@@ -219,7 +219,7 @@ AegisReview v{_e(asm.tool_version)} &middot; model: {_e(asm.model)}</p>
              f"<li>Files analyzed: {asm.stats.get('files_analyzed', 0)} ({asm.stats.get('lines_analyzed', 0)} lines); "
              f"secret-like values redacted before AI analysis: {asm.stats.get('secrets_redacted', 0)}</li>"
              f"<li>AI candidates: {asm.stats.get('candidates', 0)}; dropped (evidence not verifiable): {asm.stats.get('dropped_unverifiable', 0)}; "
-             f"rejected during lead review: {asm.stats.get('rejected_by_review', 0)}</li></ul>")
+             f"rejected during lead review: {asm.stats.get('rejected_by_review', 0)}; merged as duplicates: {asm.stats.get('merged_duplicates', 0)}</li></ul>")
     if asm.rejected:
         h.append("<h3>Candidates rejected during review</h3><table><tr><th>Candidate</th><th>Location</th><th>Reason</th></tr>")
         for r in asm.rejected:
