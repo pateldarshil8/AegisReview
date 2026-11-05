@@ -18,7 +18,7 @@ Built for the CDF CyberSec Hackathon, *Intelligent Code Security Challenge*. It 
 
 ## Quick start
 
-Requirements: Python 3.9+ and a Google AI Studio API key (free tier works). Git is only needed for scanning git URLs.
+Requirements: Python 3.9+ and an API key for **Anthropic Claude** or **Google Gemini** (AI Studio). Git is only needed for scanning git URLs.
 
 ```bash
 git clone https://github.com/pateldarshil8/AegisReview.git
@@ -27,7 +27,7 @@ python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-cp .env.example .env               # then edit .env and add your key
+cp .env.example .env               # then edit .env: pick AI_PROVIDER and add your key
 python -m aegisreview check        # verifies the key and model
 ```
 
@@ -48,7 +48,8 @@ Reports are written to `./reports/` as `<app>-security-report.md`, `.html` and `
 | `-o, --out DIR` | Output directory (default `reports`) |
 | `--formats md,html,json` | Which reports to write |
 | `--name NAME` | Application name shown in the report |
-| `--model MODEL` | Override `GEMINI_MODEL` |
+| `--provider anthropic\|gemini` | Choose the AI provider (default: `AI_PROVIDER` in `.env`) |
+| `--model MODEL` | Override the configured model |
 | `--lenses a,b` | Choose review passes (default all three). Fewer passes use fewer API calls. |
 | `--no-ai` | Offline mode: pattern-based leads only. No code leaves your machine. |
 | `--fail-on SEVERITY` | Exit code 1 if a finding at or above this severity exists (useful for CI) |
@@ -57,20 +58,24 @@ Reports are written to `./reports/` as `<app>-security-report.md`, `.html` and `
 ### Configuration (`.env`)
 
 ```
-GEMINI_API_KEY=your_key_here
+AI_PROVIDER=anthropic                    # or: gemini
+
+ANTHROPIC_API_KEY=your_key_here
+ANTHROPIC_MODEL=claude-sonnet-5-5
+
+GEMINI_API_KEY=your_key_here             # only if you use Gemini
 GEMINI_MODEL=gemini-3.5-flash
-AI_FALLBACK_MODELS=gemini-3-flash-preview      # optional: tried when the primary is overloaded
 ```
 
-See `.env.example` for retry, rate-limit and timeout settings. Never commit `.env` (it is in `.gitignore`).
+See `.env.example` for fallback models, retry, rate-limit and timeout settings. Never commit `.env` (it is in `.gitignore`).
 
-A normal scan makes 4 AI calls (3 review passes and 1 lead review). Free-tier Gemini keys have per-minute and per-day request limits, so the client spaces requests out, retries on overload and rotates to fallback models.
+A normal scan makes 4 AI calls (3 review passes and 1 lead review). The client spaces requests out, retries on overload and rate limits, and can rotate to fallback models. Identical requests are cached in `.aegis-cache/` (per provider), so re-running the same scan on unchanged code is instant and free; use `--no-cache` to force fresh calls. Free-tier Gemini keys have small per-minute and per-day request limits.
 
 ## AI model integration
 
-- **Provider:** Google Gemini through the official `google-genai` SDK. The model is configurable; any Gemini model that supports JSON output works.
+- **Providers:** Anthropic Claude through the official `anthropic` SDK, or Google Gemini through `google-genai`. Both sit behind one interface, so the analysis pipeline, prompts and report are identical. The model is configurable.
 - **Where AI is used:** vulnerability discovery across files (including frontend, backend functions and SQL policies together), explanation, severity and confidence judgement, secure code generation, de-duplication and false-positive review, and the executive summary and overall assessment.
-- **Structured output:** responses are requested as JSON and validated and normalized in code. Malformed responses are retried.
+- **Structured output:** the prompts require a single JSON object; responses are parsed, validated and normalized in code, and malformed responses are retried.
 - **Handling uncertainty:** every finding is `confirmed` (directly evident in the code) or `needs_validation` (depends on context the tool cannot see), with a confidence level and validation notes. Placeholder-looking credentials are never reported as confirmed leaks.
 - **Grounding:** the code verifies quoted evidence against the file before a finding is accepted. The report shows the real lines from the source, not the model's paraphrase.
 - **Pattern hints:** a small set of generic regex rules (for example `eval`, raw HTML sinks, always-true row-level-security policies, tables without RLS) provides unverified leads to the AI prompts. They are only reported directly in `--no-ai` mode or if the AI service is unreachable, and then labelled as pattern-based and needing validation.
@@ -91,7 +96,7 @@ aegisreview/
   redact.py       secret redaction
   hints.py        generic pattern hints
   prompts.py      review and lead-review prompts
-  ai.py           Gemini client (retries, throttling, model fallback)
+  ai.py           Claude and Gemini clients (retries, throttling, model fallback, cache)
   analyzer.py     pipeline: review, evidence verification, consolidation
   report.py       Markdown / HTML / JSON report generation
 tests/            unit tests (python -m unittest discover -s tests)
@@ -104,13 +109,14 @@ sample-report/    report generated for the provided CDF TaskFlow application
 python -m unittest discover -s tests
 ```
 
-The tests cover redaction, input handling (including ZIP path traversal), evidence verification, JSON parsing, the pattern hints and report rendering. They do not call the AI service.
+The tests cover redaction, input handling (including ZIP path traversal), evidence verification, JSON parsing, provider selection, caching, the pattern hints and report rendering. They do not call any AI service.
 
 ## Dependencies and attribution
 
 - Python standard library
+- [`anthropic`](https://pypi.org/project/anthropic/) (MIT), the Anthropic Python SDK, and its transitive dependencies
 - [`google-genai`](https://pypi.org/project/google-genai/) (Apache-2.0), the Google Gen AI SDK, and its transitive dependencies
-- Google Gemini API (external service, subject to Google's API terms)
+- Anthropic Claude API and Google Gemini API (external services, subject to each provider's API terms)
 - CDF TaskFlow, the intentionally vulnerable sample application provided by the hackathon organizers, is used only as an input for testing and for the sample report. It is not included in this repository.
 - No other third-party code is reused. Everything in `aegisreview/` was written for this hackathon.
 
@@ -119,7 +125,7 @@ The tests cover redaction, input handling (including ZIP path traversal), eviden
 - Static analysis only: no runtime testing and no exploit execution.
 - AI output is probabilistic. Treat findings marked `needs_validation` as leads, and review all findings before acting on them.
 - Very large codebases are split into batches, which reduces cross-batch reasoning.
-- Free-tier API quotas limit how many scans can run per day.
+- Provider rate limits and quotas apply (Gemini's free tier allows only a few scans per day).
 
 ## License
 

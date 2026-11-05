@@ -9,7 +9,7 @@ import time
 from datetime import date
 
 from . import __version__
-from .ai import AIError, GeminiClient
+from .ai import AIError, BaseClient, make_client
 from .collector import SourceTree
 from .config import Settings
 from .hints import Hint, run_hints
@@ -166,7 +166,7 @@ def _heuristic_dedupe(findings: list[Finding]) -> list[Finding]:
     return out
 
 
-def consolidate(client: GeminiClient, name: str, cands: list[Finding], lines_by_file: dict):
+def consolidate(client: BaseClient, name: str, cands: list[Finding], lines_by_file: dict):
     payload = []
     for c in cands:
         payload.append({
@@ -264,7 +264,7 @@ def analyze(tree: SourceTree, settings: Settings, use_ai: bool = True, lenses: l
     client = None
     if use_ai:
         try:
-            client = GeminiClient(settings)
+            client = make_client(settings)
         except AIError as e:
             asm.warnings.append(f"AI unavailable: {e}. Showing pattern-based leads only.")
     if client is None:
@@ -355,10 +355,10 @@ def analyze(tree: SourceTree, settings: Settings, use_ai: bool = True, lenses: l
     return asm
 
 
-def _models_label(client: GeminiClient, settings: Settings) -> str:
+def _models_label(client: BaseClient, settings: Settings) -> str:
     live = [m for m, _ in client.used.most_common() if m != "cached response"]
     cached = client.used.get("cached response", 0) > 0
-    label = ", ".join(live) if live else "Google Gemini"
+    label = ", ".join(live) if live else client.label
     return f"{label} (some responses reused from cache)" if cached else label
 
 

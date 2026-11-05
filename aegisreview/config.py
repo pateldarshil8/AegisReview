@@ -24,6 +24,7 @@ def load_env_file(path: Path) -> None:
 
 @dataclass
 class Settings:
+    provider: str
     api_key: str
     model: str
     fallback_models: list
@@ -44,19 +45,37 @@ def _num(name: str, default, cast):
         return default
 
 
+def _split(name: str) -> list:
+    return [m.strip() for m in os.environ.get(name, "").split(",") if m.strip()]
+
+
 def load_settings(env_file: str | None = None, model: str | None = None) -> Settings:
     if env_file:
         load_env_file(Path(env_file))
     load_env_file(Path.cwd() / ".env")
     load_env_file(REPO_ROOT / ".env")
+    provider = os.environ.get("AI_PROVIDER", "").strip().lower()
+    if provider not in ("gemini", "anthropic"):
+        has_claude = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+        has_gemini = bool(os.environ.get("GEMINI_API_KEY", "").strip())
+        provider = "anthropic" if has_claude and not has_gemini else "gemini"
+    if provider == "anthropic":
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        default_model = os.environ.get("ANTHROPIC_MODEL") or "claude-sonnet-5-5"
+        fallbacks, default_interval = _split("ANTHROPIC_FALLBACK_MODELS"), 1.0
+    else:
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        default_model = os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash"
+        fallbacks, default_interval = _split("AI_FALLBACK_MODELS"), 13.0
     temp = os.environ.get("AI_TEMPERATURE")
     return Settings(
-        api_key=os.environ.get("GEMINI_API_KEY", "").strip(),
-        model=(model or os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")).strip(),
-        fallback_models=[m.strip() for m in os.environ.get("AI_FALLBACK_MODELS", "").split(",") if m.strip()],
+        provider=provider,
+        api_key=api_key,
+        model=(model or default_model).strip(),
+        fallback_models=fallbacks,
         max_retries=_num("AI_MAX_RETRIES", 5, int),
         delay=_num("AI_REQUEST_DELAY_SECONDS", 2.0, float),
-        min_interval=_num("AI_MIN_INTERVAL_SECONDS", 13.0, float),
+        min_interval=_num("AI_MIN_INTERVAL_SECONDS", default_interval, float),
         timeout=_num("AI_TIMEOUT_SECONDS", 120, int),
         concurrency=max(1, _num("AI_CONCURRENCY", 3, int)),
         temperature=float(temp) if temp else None,

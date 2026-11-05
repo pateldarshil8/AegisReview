@@ -151,3 +151,61 @@ class DedupeTests(unittest.TestCase):
         out = _heuristic_dedupe([a, b, c, d])
         self.assertEqual(len(out), 3)
         self.assertEqual(len(out[0].related), 1)
+
+
+class ProviderTests(unittest.TestCase):
+    KEYS = ["AI_PROVIDER", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_MODEL", "GEMINI_MODEL",
+            "AI_MIN_INTERVAL_SECONDS", "AI_FALLBACK_MODELS", "ANTHROPIC_FALLBACK_MODELS"]
+
+    def _settings(self, **env):
+        import os
+        from unittest import mock
+        from aegisreview.config import load_settings
+        base = {k: "" for k in self.KEYS}
+        base.update(env)
+        with mock.patch.dict(os.environ, base), mock.patch("aegisreview.config.load_env_file"):
+            return load_settings()
+
+    def test_provider_selection_and_defaults(self):
+        s = self._settings(AI_PROVIDER="anthropic", ANTHROPIC_API_KEY="k")
+        self.assertEqual((s.provider, s.model, s.min_interval), ("anthropic", "claude-sonnet-5-5", 1.0))
+        self.assertEqual(self._settings(ANTHROPIC_API_KEY="k").provider, "anthropic")
+        self.assertEqual(self._settings(ANTHROPIC_API_KEY="k", GEMINI_API_KEY="g").provider, "gemini")
+        g = self._settings(GEMINI_API_KEY="g")
+        self.assertEqual((g.provider, g.min_interval), ("gemini", 13.0))
+
+    def test_placeholder_key_is_rejected_before_any_network_use(self):
+        from aegisreview.ai import AIError, make_client
+        s = self._settings(AI_PROVIDER="anthropic", ANTHROPIC_API_KEY="PASTE_YOUR_ANTHROPIC_KEY_HERE")
+        with self.assertRaises(AIError):
+            make_client(s)
+
+    def test_cache_keys_are_separate_per_provider_but_gemini_is_backward_compatible(self):
+        import hashlib
+        from aegisreview.ai import BaseClient
+
+        class A(BaseClient):
+            provider = "anthropic"
+
+        class G(BaseClient):
+            provider = "gemini"
+
+        s = self._settings(GEMINI_API_KEY="g")
+        s.cache_dir = "/tmp/x"
+        legacy = hashlib.sha256(("sys" + "\0" + "prompt").encode()).hexdigest() + ".json"
+        self.assertEqual(G(s)._cache_path("sys", "prompt").name, legacy)
+        self.assertNotEqual(A(s)._cache_path("sys", "prompt").name, legacy)
+
+    def test_error_classification(self):
+        from aegisreview.ai import BaseClient
+
+        class E(Exception):
+            def __init__(self, code):
+                super().__init__("boom")
+                self.status_code = code
+
+        c = BaseClient(self._settings(GEMINI_API_KEY="g"))
+        self.assertEqual(c._classify(E(529), False), (True, False))
+        self.assertEqual(c._classify(E(429), False), (True, True))
+        self.assertEqual(c._classify(E(400), False), (False, False))
+        self.assertEqual(c._classify(E(404), True)[0], True)
