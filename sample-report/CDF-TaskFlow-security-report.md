@@ -10,21 +10,9 @@
 
 **Tool Name:** AegisReview v1.0.0
 
-**AI Model:** claude-sonnet-5-5 (some responses reused from cache)
-
-**Overall Risk Rating:** Critical
-
 ## 2. Executive Summary
 
-The most serious problems are in the backend functions: a search endpoint that can be used to run arbitrary database commands, and task-update and profile-lookup endpoints that require no login and use an all-powerful database key. The database access rules also let users promote themselves to admin and read data that likely belongs to others. The front end renders comment text as raw HTML, which allows script injection that would run in other users' browsers. Remaining items are minor hardening issues.
-
-**Top priorities**
-
-1. Parameterize the search-tasks query (no sql.unsafe) and use a least-privilege database role.
-2. Require authentication in update-task and get-profile, verify ownership, whitelist updatable fields, and use the caller's JWT instead of the service-role key.
-3. Prevent users from changing their own role (column-level grants or a trigger/WITH CHECK that keeps role unchanged).
-4. Sanitize or stop using dangerouslySetInnerHTML for comment text.
-5. Tighten tasks, comments and project_id policies to match the intended ownership model.
+The most serious problems are in the backend functions: a search endpoint that can be used to run arbitrary database commands, and task-update and profile-lookup endpoints that require no login and use an all-powerful database key. The database access rules also let users promote themselves to admin and read data that likely belongs to others. The front end renders comment text as raw HTML, which allows script injection that would run in other users' browsers. Remaining items are minor hardening issues. AI-assisted findings should be validated before being treated as confirmed vulnerabilities.
 
 ## 3. Findings Summary
 
@@ -34,36 +22,23 @@ The most serious problems are in the backend functions: a search endpoint that c
 | High | 3 |
 | Medium | 3 |
 | Low | 4 |
-| Info | 0 |
 | **Total** | **12** |
-
-| ID | Severity | Title | Location | Status |
-|---|---|---|---|---|
-| AR-001 | Critical | SQL injection via string-interpolated search term in sql.unsafe | `supabase/functions/search-tasks/index.ts` lines 20-28 | Confirmed |
-| AR-002 | Critical | Unauthenticated update-task with service-role key and mass assignment (IDOR) | `supabase/functions/update-task/index.ts` lines 26-38 | Confirmed |
-| AR-003 | High | Stored XSS via dangerouslySetInnerHTML on comment text | `src/components/TaskComments.tsx` lines 39-41 | Confirmed |
-| AR-004 | High | Unauthenticated get-profile with service-role key allows reading any profile (IDOR) | `supabase/functions/get-profile/index.ts` lines 14-28 | Confirmed |
-| AR-005 | High | Profile update policy allows users to change their own role (privilege escalation) | `supabase/migrations/002_access_policies.sql` lines 15-20 | Confirmed |
-| AR-006 | Medium | RLS policy lets any authenticated user read all tasks | `supabase/migrations/002_access_policies.sql` lines 34-38 | Needs validation |
-| AR-007 | Medium | Tasks insert/update policies do not protect project_id (cross-project injection) | `supabase/migrations/002_access_policies.sql` lines 40-50 | Needs validation |
-| AR-008 | Medium | task_comments policies do not tie access to task ownership | `supabase/migrations/002_access_policies.sql` lines 57-69 | Needs validation |
-| AR-009 | Low | Hardcoded credential-like analytics key in source | `src/lib/demoConfig.ts` lines 7-9 | Needs validation |
-| AR-010 | Low | Wildcard CORS on a state-changing endpoint | `supabase/functions/update-task/index.ts` line 5 | Needs validation |
-| AR-011 | Low | Verbose error details leaked to client | `supabase/functions/update-task/index.ts` lines 55-58 | Confirmed |
-| AR-012 | Low | Profiles readable by all authenticated users (all columns) | `supabase/migrations/002_access_policies.sql` lines 9-13 | Needs validation |
 
 ## 4. Detailed Findings
 
-### AR-001: SQL injection via string-interpolated search term in sql.unsafe
+### Finding 1: SQL injection via string-interpolated search term in sql.unsafe
 
-**Severity:** Critical  
-**Category:** Injection  
-**CWE:** CWE-89  
-**OWASP:** A03:2021 Injection  
-**Affected File:** `supabase/functions/search-tasks/index.ts`  
-**Code Location:** lines 20-28  
-**Status:** Confirmed  
-**Confidence:** High
+**Finding ID:** AR-001
+
+**Severity:** Critical
+
+**Category:** Injection
+
+**CWE:** CWE-89 (OWASP Top 10: A03:2021 Injection)
+
+**Affected File:** `supabase/functions/search-tasks/index.ts`
+
+**Code Location:** lines 20-28
 
 #### Description
 
@@ -105,16 +80,27 @@ const tasks = await sql`
 `;
 ```
 
-### AR-002: Unauthenticated update-task with service-role key and mass assignment (IDOR)
+#### Confidence
 
-**Severity:** Critical  
-**Category:** Broken Access Control  
-**CWE:** CWE-915  
-**OWASP:** A01:2021 Broken Access Control  
-**Affected File:** `supabase/functions/update-task/index.ts`  
-**Code Location:** lines 26-38  
-**Status:** Confirmed  
-**Confidence:** High
+High — the weakness is directly evident in the code shown.
+
+#### Validation Notes
+
+No further validation is needed beyond reviewing the recommended fix in context.
+
+### Finding 2: Unauthenticated update-task with service-role key and mass assignment (IDOR)
+
+**Finding ID:** AR-002
+
+**Severity:** Critical
+
+**Category:** Broken Access Control
+
+**CWE:** CWE-915 (OWASP Top 10: A01:2021 Broken Access Control)
+
+**Affected File:** `supabase/functions/update-task/index.ts`
+
+**Code Location:** lines 26-38
 
 #### Description
 
@@ -165,20 +151,27 @@ const { data, error } = await supabase.from("tasks").update(changes)
   .eq("id", b.taskId).eq("owner_id", user.id).select().single();
 ```
 
+#### Confidence
+
+High — the weakness is directly evident in the code shown.
+
 #### Validation Notes
 
 Check whether the function is deployed with verify_jwt enabled; even so, there is no ownership check.
 
-### AR-003: Stored XSS via dangerouslySetInnerHTML on comment text
+### Finding 3: Stored XSS via dangerouslySetInnerHTML on comment text
 
-**Severity:** High  
-**Category:** Cross-Site Scripting  
-**CWE:** CWE-79  
-**OWASP:** A03:2021 Injection  
-**Affected File:** `src/components/TaskComments.tsx`  
-**Code Location:** lines 39-41  
-**Status:** Confirmed  
-**Confidence:** High
+**Finding ID:** AR-003
+
+**Severity:** High
+
+**Category:** Cross-Site Scripting
+
+**CWE:** CWE-79 (OWASP Top 10: A03:2021 Injection)
+
+**Affected File:** `src/components/TaskComments.tsx`
+
+**Code Location:** lines 39-41
 
 #### Description
 
@@ -206,16 +199,27 @@ Render the text as a normal React text node so it is auto-escaped. If rich text 
 <div>{comment.text}</div>
 ```
 
-### AR-004: Unauthenticated get-profile with service-role key allows reading any profile (IDOR)
+#### Confidence
 
-**Severity:** High  
-**Category:** Broken Access Control  
-**CWE:** CWE-639  
-**OWASP:** A01:2021 Broken Access Control  
-**Affected File:** `supabase/functions/get-profile/index.ts`  
-**Code Location:** lines 14-28  
-**Status:** Confirmed  
-**Confidence:** High
+High — the weakness is directly evident in the code shown.
+
+#### Validation Notes
+
+No further validation is needed beyond reviewing the recommended fix in context.
+
+### Finding 4: Unauthenticated get-profile with service-role key allows reading any profile (IDOR)
+
+**Finding ID:** AR-004
+
+**Severity:** High
+
+**Category:** Broken Access Control
+
+**CWE:** CWE-639 (OWASP Top 10: A01:2021 Broken Access Control)
+
+**Affected File:** `supabase/functions/get-profile/index.ts`
+
+**Code Location:** lines 14-28
 
 #### Description
 
@@ -264,20 +268,27 @@ const { data, error } = await supabase.from("profiles")
   .select("id, full_name, bio").eq("id", user.id).single();
 ```
 
-#### Related Locations
+#### Confidence
 
-- `supabase/functions/get-profile/index.ts:42` (Error details are returned via String(error))
+High — the weakness is directly evident in the code shown.
 
-### AR-005: Profile update policy allows users to change their own role (privilege escalation)
+#### Validation Notes
 
-**Severity:** High  
-**Category:** Broken Access Control  
-**CWE:** CWE-269  
-**OWASP:** A01:2021 Broken Access Control  
-**Affected File:** `supabase/migrations/002_access_policies.sql`  
-**Code Location:** lines 15-20  
-**Status:** Confirmed  
-**Confidence:** High
+Related locations: supabase/functions/get-profile/index.ts:42 (Error details are returned via String(error)).
+
+### Finding 5: Profile update policy allows users to change their own role (privilege escalation)
+
+**Finding ID:** AR-005
+
+**Severity:** High
+
+**Category:** Broken Access Control
+
+**CWE:** CWE-269 (OWASP Top 10: A01:2021 Broken Access Control)
+
+**Affected File:** `supabase/migrations/002_access_policies.sql`
+
+**Code Location:** lines 15-20
 
 #### Description
 
@@ -314,24 +325,27 @@ USING (id = auth.uid())
 WITH CHECK (id = auth.uid());
 ```
 
+#### Confidence
+
+High — the weakness is directly evident in the code shown.
+
 #### Validation Notes
 
-Confirm that the roles table or app logic does not rely on profiles.role for admin checks elsewhere.
+Confirm that the roles table or app logic does not rely on profiles.role for admin checks elsewhere. Related locations: supabase/migrations/002_access_policies.sql:9 (Profiles SELECT USING (true)).
 
-#### Related Locations
+### Finding 6: RLS policy lets any authenticated user read all tasks
 
-- `supabase/migrations/002_access_policies.sql:9` (Profiles SELECT USING (true))
+**Finding ID:** AR-006
 
-### AR-006: RLS policy lets any authenticated user read all tasks
+**Severity:** Medium
 
-**Severity:** Medium  
-**Category:** Broken Access Control  
-**CWE:** CWE-284  
-**OWASP:** A01:2021 Broken Access Control  
-**Affected File:** `supabase/migrations/002_access_policies.sql`  
-**Code Location:** lines 34-38  
-**Status:** Needs validation  
-**Confidence:** High
+**Category:** Broken Access Control
+
+**CWE:** CWE-284 (OWASP Top 10: A01:2021 Broken Access Control)
+
+**Affected File:** `supabase/migrations/002_access_policies.sql`
+
+**Code Location:** lines 34-38
 
 #### Description
 
@@ -365,20 +379,27 @@ TO authenticated
 USING (owner_id = auth.uid());
 ```
 
-#### Related Locations
+#### Confidence
 
-- `supabase/migrations/002_access_policies.sql:53` (The comments policy depends on the tasks table. Its EXISTS subquery does not filter by owner, so it is still effectively open unless the tasks policy is restricted.)
+High — the weakness is plausible but depends on context outside the analyzed code.
 
-### AR-007: Tasks insert/update policies do not protect project_id (cross-project injection)
+#### Validation Notes
 
-**Severity:** Medium  
-**Category:** Broken Access Control  
-**CWE:** CWE-639  
-**OWASP:** A01:2021 Broken Access Control  
-**Affected File:** `supabase/migrations/002_access_policies.sql`  
-**Code Location:** lines 40-50  
-**Status:** Needs validation  
-**Confidence:** Medium
+Related locations: supabase/migrations/002_access_policies.sql:53 (The comments policy depends on the tasks table. Its EXISTS subquery does not filter by owner, so it is still effectively open unless the tasks policy is restricted.).
+
+### Finding 7: Tasks insert/update policies do not protect project_id (cross-project injection)
+
+**Finding ID:** AR-007
+
+**Severity:** Medium
+
+**Category:** Broken Access Control
+
+**CWE:** CWE-639 (OWASP Top 10: A01:2021 Broken Access Control)
+
+**Affected File:** `supabase/migrations/002_access_policies.sql`
+
+**Code Location:** lines 40-50
 
 #### Description
 
@@ -425,20 +446,27 @@ WITH CHECK (
 );
 ```
 
-#### Related Locations
+#### Confidence
 
-- `supabase/migrations/002_access_policies.sql:65` (Comment insert lacks a task access check)
+Medium — the weakness is plausible but depends on context outside the analyzed code.
 
-### AR-008: task_comments policies do not tie access to task ownership
+#### Validation Notes
 
-**Severity:** Medium  
-**Category:** Broken Access Control  
-**CWE:** CWE-639  
-**OWASP:** A01:2021 Broken Access Control  
-**Affected File:** `supabase/migrations/002_access_policies.sql`  
-**Code Location:** lines 57-69  
-**Status:** Needs validation  
-**Confidence:** Medium
+Related locations: supabase/migrations/002_access_policies.sql:65 (Comment insert lacks a task access check).
+
+### Finding 8: task_comments policies do not tie access to task ownership
+
+**Finding ID:** AR-008
+
+**Severity:** Medium
+
+**Category:** Broken Access Control
+
+**CWE:** CWE-639 (OWASP Top 10: A01:2021 Broken Access Control)
+
+**Affected File:** `supabase/migrations/002_access_policies.sql`
+
+**Code Location:** lines 57-69
 
 #### Description
 
@@ -482,16 +510,27 @@ CREATE POLICY "Users can add task comments" ON public.task_comments FOR INSERT T
 WITH CHECK (author_id = auth.uid() AND EXISTS (SELECT 1 FROM public.tasks t WHERE t.id = task_id AND t.owner_id = auth.uid()));
 ```
 
-### AR-009: Hardcoded credential-like analytics key in source
+#### Confidence
 
-**Severity:** Low  
-**Category:** Hardcoded Secrets  
-**CWE:** CWE-798  
-**OWASP:** A07:2021 Identification and Authentication Failures  
-**Affected File:** `src/lib/demoConfig.ts`  
-**Code Location:** lines 7-9  
-**Status:** Needs validation  
-**Confidence:** Low
+Medium — the weakness is plausible but depends on context outside the analyzed code.
+
+#### Validation Notes
+
+No further validation is needed beyond reviewing the recommended fix in context.
+
+### Finding 9: Hardcoded credential-like analytics key in source
+
+**Finding ID:** AR-009
+
+**Severity:** Low
+
+**Category:** Hardcoded Secrets
+
+**CWE:** CWE-798 (OWASP Top 10: A07:2021 Identification and Authentication Failures)
+
+**Affected File:** `src/lib/demoConfig.ts`
+
+**Code Location:** lines 7-9
 
 #### Description
 
@@ -519,20 +558,27 @@ Confirm it is a non-production or public write key. Otherwise load it from build
 apiKey: import.meta.env.VITE_ANALYTICS_KEY,
 ```
 
+#### Confidence
+
+Low — the weakness is plausible but depends on context outside the analyzed code.
+
 #### Validation Notes
 
 Confirm that this is a placeholder or a public analytics write key, not a production secret.
 
-### AR-010: Wildcard CORS on a state-changing endpoint
+### Finding 10: Wildcard CORS on a state-changing endpoint
 
-**Severity:** Low  
-**Category:** Security Misconfiguration  
-**CWE:** CWE-942  
-**OWASP:** A05:2021 Security Misconfiguration  
-**Affected File:** `supabase/functions/update-task/index.ts`  
-**Code Location:** line 5  
-**Status:** Needs validation  
-**Confidence:** Medium
+**Finding ID:** AR-010
+
+**Severity:** Low
+
+**Category:** Security Misconfiguration
+
+**CWE:** CWE-942 (OWASP Top 10: A05:2021 Security Misconfiguration)
+
+**Affected File:** `supabase/functions/update-task/index.ts`
+
+**Code Location:** line 5
 
 #### Description
 
@@ -563,20 +609,27 @@ const corsHeaders = {
 };
 ```
 
+#### Confidence
+
+Medium — the weakness is plausible but depends on context outside the analyzed code.
+
 #### Validation Notes
 
 Impact is limited if JWT auth is added, since no cookies are used.
 
-### AR-011: Verbose error details leaked to client
+### Finding 11: Verbose error details leaked to client
 
-**Severity:** Low  
-**Category:** Security Misconfiguration  
-**CWE:** CWE-209  
-**OWASP:** A05:2021 Security Misconfiguration  
-**Affected File:** `supabase/functions/update-task/index.ts`  
-**Code Location:** lines 55-58  
-**Status:** Confirmed  
-**Confidence:** High
+**Finding ID:** AR-011
+
+**Severity:** Low
+
+**Category:** Security Misconfiguration
+
+**CWE:** CWE-209 (OWASP Top 10: A05:2021 Security Misconfiguration)
+
+**Affected File:** `supabase/functions/update-task/index.ts`
+
+**Code Location:** lines 55-58
 
 #### Description
 
@@ -606,20 +659,27 @@ console.error("update-task failed:", error);
 return Response.json({ error: "Unable to update task" }, { status: 500, headers: corsHeaders });
 ```
 
-#### Related Locations
+#### Confidence
 
-- `supabase/functions/get-profile/index.ts:43` (Returns String(error) to the client)
+High — the weakness is directly evident in the code shown.
 
-### AR-012: Profiles readable by all authenticated users (all columns)
+#### Validation Notes
 
-**Severity:** Low  
-**Category:** Broken Access Control  
-**CWE:** CWE-284  
-**OWASP:** A01:2021 Broken Access Control  
-**Affected File:** `supabase/migrations/002_access_policies.sql`  
-**Code Location:** lines 9-13  
-**Status:** Needs validation  
-**Confidence:** Medium
+Related locations: supabase/functions/get-profile/index.ts:43 (Returns String(error) to the client).
+
+### Finding 12: Profiles readable by all authenticated users (all columns)
+
+**Finding ID:** AR-012
+
+**Severity:** Low
+
+**Category:** Broken Access Control
+
+**CWE:** CWE-284 (OWASP Top 10: A01:2021 Broken Access Control)
+
+**Affected File:** `supabase/migrations/002_access_policies.sql`
+
+**Code Location:** lines 9-13
 
 #### Description
 
@@ -651,6 +711,10 @@ ON public.profiles FOR SELECT TO authenticated
 USING (id = auth.uid());
 ```
 
+#### Confidence
+
+Medium — the weakness is plausible but depends on context outside the analyzed code.
+
 #### Validation Notes
 
 This may be intended if profiles are public within the app.
@@ -674,20 +738,36 @@ This may be intended if profiles are public within the app.
 
 ## 6. Overall Assessment
 
+Overall risk rating: Critical.
+
 The security posture is weak at the server edge. Several functions skip authentication and use privileged credentials, so database-level protections are bypassed entirely. The row-level policies are also loose in places, most importantly the self-service role change. The client-side XSS sink compounds the risk.
 
 Fix the unauthenticated and injectable functions first, since they are directly exploitable by anyone. Then close the role escalation and XSS issues. Next, review the task, comment and project policies against the intended sharing model. Finally, clean up error messages, CORS and the demo configuration.
 
+Recommended order of work:
+
+1. Parameterize the search-tasks query (no sql.unsafe) and use a least-privilege database role.
+2. Require authentication in update-task and get-profile, verify ownership, whitelist updatable fields, and use the caller's JWT instead of the service-role key.
+3. Prevent users from changing their own role (column-level grants or a trigger/WITH CHECK that keeps role unchanged).
+4. Sanitize or stop using dangerouslySetInnerHTML for comment text.
+5. Tighten tasks, comments and project_id policies to match the intended ownership model.
+
+The report is an AI-assisted source-code assessment, not a complete penetration test.
+
 ## 7. Scope and Limitations
 
-- Static code review only; no exploit execution or runtime testing
-- AI-generated findings should be validated before being treated as confirmed vulnerabilities
+- Static code review only
+- No exploit execution
+- No runtime penetration testing
+- No guarantee that every vulnerability is found
+- Some findings may require manual confirmation
+- Analyzed 18 source files (951 lines); 1 secret-like value(s) were redacted before AI analysis
+- AI model: claude-sonnet-5-5 (some responses reused from cache)
 - Every reported finding's quoted evidence was checked programmatically against the cited file and line
-- No guarantee that every vulnerability was found
-- Files analyzed: 18 (951 lines)
-- Secret-like values redacted before AI analysis: 1
 - AI review candidates: 32; dropped because evidence could not be verified: 0; rejected during lead review: 0; merged as duplicates: 20
 
 ## 8. Conclusion
 
-Address high-impact issues first and validate each remediation with appropriate testing. A follow-up review is recommended after the changes are applied.
+Address high-impact issues first and validate the remediation using appropriate testing.
+
+A follow-up security review is recommended after the changes are implemented.
