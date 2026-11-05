@@ -363,12 +363,20 @@ def _models_label(client: GeminiClient, settings: Settings) -> str:
 
 
 def _tidy_related(f: Finding) -> None:
+    """Drop repeated locations and 'related' entries that merely restate the primary finding."""
     seen, out = {(f.file, f.line_start)}, []
+    primary_tokens = _tokens(f.title)
     for r in f.related:
         key = (r["file"], r["line_start"])
-        if key not in seen:
-            seen.add(key)
-            out.append(r)
+        if key in seen:
+            continue
+        seen.add(key)
+        near = r["file"] == f.file and f.line_start - 4 <= r["line_start"] <= f.line_end + 4
+        note_tokens = _tokens(r.get("note", ""))
+        similar = bool(primary_tokens and note_tokens) and len(primary_tokens & note_tokens) / len(primary_tokens | note_tokens) >= 0.5
+        if near and similar:
+            continue
+        out.append(r)
     f.related = out
 
 

@@ -71,15 +71,15 @@ The search term is concatenated directly into a SQL query string and executed us
 #### Vulnerable Code
 
 ```typescript
-    const query = `
-      SELECT id, title, description, status
-      FROM public.tasks
-      WHERE title ILIKE '%${searchTerm}%'
-      ORDER BY created_at DESC
-      LIMIT 25
-    `;
+const query = `
+  SELECT id, title, description, status
+  FROM public.tasks
+  WHERE title ILIKE '%${searchTerm}%'
+  ORDER BY created_at DESC
+  LIMIT 25
+`;
 
-    const tasks = await sql.unsafe(query);
+const tasks = await sql.unsafe(query);
 ```
 
 #### Potential Impact
@@ -114,17 +114,17 @@ The function uses the Supabase service role key to bypass all Row Level Security
 #### Vulnerable Code
 
 ```typescript
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+const supabase = createClient(
+  Deno.env.get("SUPABASE_URL") ?? "",
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+);
 
-    const { data, error } = await supabase
-      .from("tasks")
-      .update(changes)
-      .eq("id", taskId)
-      .select()
-      .single();
+const { data, error } = await supabase
+  .from("tasks")
+  .update(changes)
+  .eq("id", taskId)
+  .select()
+  .single();
 ```
 
 #### Potential Impact
@@ -178,8 +178,8 @@ User-supplied comment text is rendered directly as raw HTML using 'dangerouslySe
 #### Vulnerable Code
 
 ```tsx
-                dangerouslySetInnerHTML={{
-                  __html: comment.text,
+dangerouslySetInnerHTML={{
+  __html: comment.text,
 ```
 
 #### Potential Impact
@@ -195,10 +195,6 @@ Avoid using 'dangerouslySetInnerHTML' for user-controlled text. Render the text 
 ```tsx
 <div>{comment.text}</div>
 ```
-
-#### Related Locations
-
-- `src/components/TaskComments.tsx:39` (Stored Cross-Site Scripting (XSS) in TaskComments)
 
 ### AR-004: Insecure Direct Object Reference (IDOR) in get-profile
 
@@ -218,11 +214,11 @@ The function retrieves user profile data based on a user-supplied 'userId' param
 #### Vulnerable Code
 
 ```typescript
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
+const { data, error } = await supabase
+  .from("profiles")
+  .select("*")
+  .eq("id", userId)
+  .single();
 ```
 
 #### Potential Impact
@@ -352,7 +348,7 @@ The function uses a wildcard ('*') for the Access-Control-Allow-Origin header.
 #### Vulnerable Code
 
 ```typescript
-  "Access-Control-Allow-Origin": "*",
+"Access-Control-Allow-Origin": "*",
 ```
 
 #### Potential Impact
@@ -430,7 +426,7 @@ A hardcoded API key for an analytics service was found in the configuration file
 #### Vulnerable Code
 
 ```typescript
-    apiKey: "<REDACTED:credential:len=35:placeholder-like=yes>",
+apiKey: "<REDACTED:credential:len=35:placeholder-like=yes>",
 ```
 
 #### Potential Impact
@@ -469,9 +465,9 @@ Verbose debugging is enabled in the configuration, which is dangerous if deploye
 #### Vulnerable Code
 
 ```typescript
-  debug: {
-    enabled: true,
-    logLevel: "verbose",
+debug: {
+  enabled: true,
+  logLevel: "verbose",
 ```
 
 #### Potential Impact
@@ -509,10 +505,10 @@ The function returns the raw error string to the client in the event of an excep
 #### Vulnerable Code
 
 ```typescript
-  } catch (error) {
-    return Response.json(
-      { error: String(error) },
-      { status: 500 }
+} catch (error) {
+  return Response.json(
+    { error: String(error) },
+    { status: 500 }
 ```
 
 #### Potential Impact

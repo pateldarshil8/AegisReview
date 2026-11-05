@@ -94,14 +94,7 @@
       "remediation": "Avoid using 'dangerouslySetInnerHTML' for user-controlled text. Render the text as standard React children which are automatically escaped.",
       "secure_code": "<div>{comment.text}</div>",
       "validation_notes": "",
-      "related": [
-        {
-          "file": "src/components/TaskComments.tsx",
-          "line_start": 39,
-          "line_end": 41,
-          "note": "Stored Cross-Site Scripting (XSS) in TaskComments"
-        }
-      ],
+      "related": [],
       "source": "ai",
       "lens": "injection-and-input"
     },

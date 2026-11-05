@@ -11,7 +11,7 @@ h1{margin:0 0 4px}h2{margin-top:36px;border-bottom:2px solid #e2e8f0;padding-bot
 .counts b{display:block;font-size:26px}
 pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto;font-size:13px}
 .good pre{background:#052e16}table{border-collapse:collapse;width:100%;background:#fff}th,td{border:1px solid #e2e8f0;padding:6px 10px;text-align:left;font-size:14px}
-th{background:#f1f5f9}code{background:#e2e8f0;padding:1px 5px;border-radius:4px}pre code{background:none;padding:0}
+th{background:#f1f5f9}td:first-child,th:first-child{white-space:nowrap}code{background:#e2e8f0;padding:1px 5px;border-radius:4px}pre code{background:none;padding:0}
 .note{background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin:10px 0}
 @media print{body{background:#fff}.card{break-inside:avoid}}
 </style></head><body>
@@ -43,28 +43,28 @@ AegisReview v1.0.0 &middot; model: Google Gemini (some responses reused from cac
 <tr><td><a href="#AR-011">AR-011</a></td><td>Low</td><td>Information Disclosure (Sensitive Error Details)</td><td><code>supabase/functions/get-profile/index.ts</code> lines 42-45</td><td>Confirmed</td></tr>
 </table>
 <h2>Detailed Findings</h2>
-<div class="card" id="AR-001"><h3><span class="badge" style="background:#7f1d1d">critical</span> AR-001: SQL Injection in search-tasks function</h3><p><span class="pill">Injection</span><span class="pill">CWE-89</span><span class="pill">A03:2021 Injection</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/functions/search-tasks/index.ts</code> (lines 20-28)</p><h4>Description</h4><p>The search term is concatenated directly into a SQL query string and executed using the &#x27;unsafe&#x27; method of the postgres library. This allows an attacker to manipulate the query and potentially extract data from any table in the database.</p><h4>Vulnerable code</h4><pre><code>    const query = `
-      SELECT id, title, description, status
-      FROM public.tasks
-      WHERE title ILIKE &#x27;%${searchTerm}%&#x27;
-      ORDER BY created_at DESC
-      LIMIT 25
-    `;
+<div class="card" id="AR-001"><h3><span class="badge" style="background:#7f1d1d">critical</span> AR-001: SQL Injection in search-tasks function</h3><p><span class="pill">Injection</span><span class="pill">CWE-89</span><span class="pill">A03:2021 Injection</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/functions/search-tasks/index.ts</code> (lines 20-28)</p><h4>Description</h4><p>The search term is concatenated directly into a SQL query string and executed using the &#x27;unsafe&#x27; method of the postgres library. This allows an attacker to manipulate the query and potentially extract data from any table in the database.</p><h4>Vulnerable code</h4><pre><code>const query = `
+  SELECT id, title, description, status
+  FROM public.tasks
+  WHERE title ILIKE &#x27;%${searchTerm}%&#x27;
+  ORDER BY created_at DESC
+  LIMIT 25
+`;
 
-    const tasks = await sql.unsafe(query);</code></pre><h4>Potential impact</h4><p>An attacker can perform arbitrary database queries, leading to full data exfiltration from the tasks table and potentially other tables in the database.</p><h4>Recommended fix</h4><p>Use tagged template literals provided by the postgres library to safely parameterize the query instead of string concatenation and &#x27;unsafe&#x27;.</p>
+const tasks = await sql.unsafe(query);</code></pre><h4>Potential impact</h4><p>An attacker can perform arbitrary database queries, leading to full data exfiltration from the tasks table and potentially other tables in the database.</p><h4>Recommended fix</h4><p>Use tagged template literals provided by the postgres library to safely parameterize the query instead of string concatenation and &#x27;unsafe&#x27;.</p>
 <div class="good"><h4>Secure code example</h4><pre><code>const tasks = await sql`SELECT id, title, description, status FROM public.tasks WHERE title ILIKE ${&#x27;%&#x27; + searchTerm + &#x27;%&#x27;} ORDER BY created_at DESC LIMIT 25`;</code></pre></div>
 </div>
-<div class="card" id="AR-002"><h3><span class="badge" style="background:#7f1d1d">critical</span> AR-002: Broken Object Level Authorization (BOLA) and Authentication Bypass in update-task</h3><p><span class="pill">Broken Access Control</span><span class="pill">CWE-285</span><span class="pill">A01:2021-Broken Access Control</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/functions/update-task/index.ts</code> (lines 31-41)</p><h4>Description</h4><p>The function uses the Supabase service role key to bypass all Row Level Security (RLS) and does not verify the identity or authorization of the requester. Any user, or even an unauthenticated attacker, can provide an arbitrary taskId and changes to update any task in the system.</p><h4>Vulnerable code</h4><pre><code>    const supabase = createClient(
-      Deno.env.get(&quot;SUPABASE_URL&quot;) ?? &quot;&quot;,
-      Deno.env.get(&quot;SUPABASE_SERVICE_ROLE_KEY&quot;) ?? &quot;&quot;
-    );
+<div class="card" id="AR-002"><h3><span class="badge" style="background:#7f1d1d">critical</span> AR-002: Broken Object Level Authorization (BOLA) and Authentication Bypass in update-task</h3><p><span class="pill">Broken Access Control</span><span class="pill">CWE-285</span><span class="pill">A01:2021-Broken Access Control</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/functions/update-task/index.ts</code> (lines 31-41)</p><h4>Description</h4><p>The function uses the Supabase service role key to bypass all Row Level Security (RLS) and does not verify the identity or authorization of the requester. Any user, or even an unauthenticated attacker, can provide an arbitrary taskId and changes to update any task in the system.</p><h4>Vulnerable code</h4><pre><code>const supabase = createClient(
+  Deno.env.get(&quot;SUPABASE_URL&quot;) ?? &quot;&quot;,
+  Deno.env.get(&quot;SUPABASE_SERVICE_ROLE_KEY&quot;) ?? &quot;&quot;
+);
 
-    const { data, error } = await supabase
-      .from(&quot;tasks&quot;)
-      .update(changes)
-      .eq(&quot;id&quot;, taskId)
-      .select()
-      .single();</code></pre><h4>Potential impact</h4><p>Unauthorized modification of any task, including changing its title, description, status, or even ownership.</p><h4>Recommended fix</h4><p>Initialize the Supabase client with the user&#x27;s own JWT from the &#x27;Authorization&#x27; header and verify the user&#x27;s identity using &#x27;supabase.auth.getUser()&#x27;. Ensure RLS is enforced or manually check that the requesting user owns the task before updating.</p>
+const { data, error } = await supabase
+  .from(&quot;tasks&quot;)
+  .update(changes)
+  .eq(&quot;id&quot;, taskId)
+  .select()
+  .single();</code></pre><h4>Potential impact</h4><p>Unauthorized modification of any task, including changing its title, description, status, or even ownership.</p><h4>Recommended fix</h4><p>Initialize the Supabase client with the user&#x27;s own JWT from the &#x27;Authorization&#x27; header and verify the user&#x27;s identity using &#x27;supabase.auth.getUser()&#x27;. Ensure RLS is enforced or manually check that the requesting user owns the task before updating.</p>
 <div class="good"><h4>Secure code example</h4><pre><code>    const authHeader = request.headers.get(&#x27;Authorization&#x27;)!;
     const supabase = createClient(
       Deno.env.get(&quot;SUPABASE_URL&quot;) ?? &quot;&quot;,
@@ -83,16 +83,15 @@ AegisReview v1.0.0 &middot; model: Google Gemini (some responses reused from cac
       .single();</code></pre></div>
 <h4>Related locations</h4><ul><li>supabase/functions/update-task/index.ts:36 (Mass Assignment in update-task function)</li></ul>
 </div>
-<div class="card" id="AR-003"><h3><span class="badge" style="background:#c2410c">high</span> AR-003: Cross-Site Scripting (XSS) in TaskComments</h3><p><span class="pill">Cross-Site Scripting (XSS)</span><span class="pill">CWE-79</span><span class="pill">A03:2021 Injection</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>src/components/TaskComments.tsx</code> (lines 40-41)</p><h4>Description</h4><p>User-supplied comment text is rendered directly as raw HTML using &#x27;dangerouslySetInnerHTML&#x27; without any sanitization. This allows an attacker to inject and execute arbitrary JavaScript by submitting a comment containing malicious HTML tags or attributes.</p><h4>Vulnerable code</h4><pre><code>                dangerouslySetInnerHTML={{
-                  __html: comment.text,</code></pre><h4>Potential impact</h4><p>An attacker can execute arbitrary scripts in the browsers of other users who view the comment, potentially stealing session tokens or performing actions on behalf of the user.</p><h4>Recommended fix</h4><p>Avoid using &#x27;dangerouslySetInnerHTML&#x27; for user-controlled text. Render the text as standard React children which are automatically escaped.</p>
+<div class="card" id="AR-003"><h3><span class="badge" style="background:#c2410c">high</span> AR-003: Cross-Site Scripting (XSS) in TaskComments</h3><p><span class="pill">Cross-Site Scripting (XSS)</span><span class="pill">CWE-79</span><span class="pill">A03:2021 Injection</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>src/components/TaskComments.tsx</code> (lines 40-41)</p><h4>Description</h4><p>User-supplied comment text is rendered directly as raw HTML using &#x27;dangerouslySetInnerHTML&#x27; without any sanitization. This allows an attacker to inject and execute arbitrary JavaScript by submitting a comment containing malicious HTML tags or attributes.</p><h4>Vulnerable code</h4><pre><code>dangerouslySetInnerHTML={{
+  __html: comment.text,</code></pre><h4>Potential impact</h4><p>An attacker can execute arbitrary scripts in the browsers of other users who view the comment, potentially stealing session tokens or performing actions on behalf of the user.</p><h4>Recommended fix</h4><p>Avoid using &#x27;dangerouslySetInnerHTML&#x27; for user-controlled text. Render the text as standard React children which are automatically escaped.</p>
 <div class="good"><h4>Secure code example</h4><pre><code>&lt;div&gt;{comment.text}&lt;/div&gt;</code></pre></div>
-<h4>Related locations</h4><ul><li>src/components/TaskComments.tsx:39 (Stored Cross-Site Scripting (XSS) in TaskComments)</li></ul>
 </div>
-<div class="card" id="AR-004"><h3><span class="badge" style="background:#c2410c">high</span> AR-004: Insecure Direct Object Reference (IDOR) in get-profile</h3><p><span class="pill">Broken Access Control</span><span class="pill">CWE-639</span><span class="pill">A01:2021 Broken Access Control</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/functions/get-profile/index.ts</code> (lines 28-32)</p><h4>Description</h4><p>The function retrieves user profile data based on a user-supplied &#x27;userId&#x27; parameter without verifying if the requester is authenticated or authorized to access that profile. The use of &#x27;SUPABASE_SERVICE_ROLE_KEY&#x27; explicitly bypasses Row Level Security.</p><h4>Vulnerable code</h4><pre><code>    const { data, error } = await supabase
-      .from(&quot;profiles&quot;)
-      .select(&quot;*&quot;)
-      .eq(&quot;id&quot;, userId)
-      .single();</code></pre><h4>Potential impact</h4><p>Any user or anonymous visitor can retrieve the full profile information (including potential sensitive defaults) of any user by guessing or obtaining their UUID.</p><h4>Recommended fix</h4><p>Implement authentication using the Supabase client&#x27;s auth.getUser(jwt) method and restrict profile access based on the authenticated user&#x27;s context, or use the user&#x27;s own token to initialize the client.</p>
+<div class="card" id="AR-004"><h3><span class="badge" style="background:#c2410c">high</span> AR-004: Insecure Direct Object Reference (IDOR) in get-profile</h3><p><span class="pill">Broken Access Control</span><span class="pill">CWE-639</span><span class="pill">A01:2021 Broken Access Control</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/functions/get-profile/index.ts</code> (lines 28-32)</p><h4>Description</h4><p>The function retrieves user profile data based on a user-supplied &#x27;userId&#x27; parameter without verifying if the requester is authenticated or authorized to access that profile. The use of &#x27;SUPABASE_SERVICE_ROLE_KEY&#x27; explicitly bypasses Row Level Security.</p><h4>Vulnerable code</h4><pre><code>const { data, error } = await supabase
+  .from(&quot;profiles&quot;)
+  .select(&quot;*&quot;)
+  .eq(&quot;id&quot;, userId)
+  .single();</code></pre><h4>Potential impact</h4><p>Any user or anonymous visitor can retrieve the full profile information (including potential sensitive defaults) of any user by guessing or obtaining their UUID.</p><h4>Recommended fix</h4><p>Implement authentication using the Supabase client&#x27;s auth.getUser(jwt) method and restrict profile access based on the authenticated user&#x27;s context, or use the user&#x27;s own token to initialize the client.</p>
 <div class="good"><h4>Secure code example</h4><pre><code>const authHeader = request.headers.get(&#x27;Authorization&#x27;);
 const supabase = createClient(Deno.env.get(&#x27;SUPABASE_URL&#x27;), Deno.env.get(&#x27;SUPABASE_ANON_KEY&#x27;), { global: { headers: { Authorization: authHeader } } });
 const { data: { user } } = await supabase.auth.getUser();
@@ -123,7 +122,7 @@ TO authenticated
 USING (owner_id = auth.uid() OR EXISTS (SELECT 1 FROM public.projects WHERE projects.id = tasks.project_id AND projects.owner_id = auth.uid()));</code></pre></div>
 <h4>Related locations</h4><ul><li>supabase/migrations/002_access_policies.sql:34 (Over-permissive SELECT Policy for Tasks)</li></ul>
 </div>
-<div class="card" id="AR-007"><h3><span class="badge" style="background:#b45309">medium</span> AR-007: Permissive CORS Policy</h3><p><span class="pill">Security Misconfiguration</span><span class="pill">CWE-942</span><span class="pill">A05:2021 Security Misconfiguration</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/functions/update-task/index.ts</code> (line 5)</p><h4>Description</h4><p>The function uses a wildcard (&#x27;*&#x27;) for the Access-Control-Allow-Origin header.</p><h4>Vulnerable code</h4><pre><code>  &quot;Access-Control-Allow-Origin&quot;: &quot;*&quot;,</code></pre><h4>Potential impact</h4><p>This allows any website to make requests to the edge function, increasing the surface for cross-site attacks if the endpoint is not otherwise properly protected.</p><h4>Recommended fix</h4><p>Restrict allowed origins to the specific domains used by the application.</p>
+<div class="card" id="AR-007"><h3><span class="badge" style="background:#b45309">medium</span> AR-007: Permissive CORS Policy</h3><p><span class="pill">Security Misconfiguration</span><span class="pill">CWE-942</span><span class="pill">A05:2021 Security Misconfiguration</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/functions/update-task/index.ts</code> (line 5)</p><h4>Description</h4><p>The function uses a wildcard (&#x27;*&#x27;) for the Access-Control-Allow-Origin header.</p><h4>Vulnerable code</h4><pre><code>&quot;Access-Control-Allow-Origin&quot;: &quot;*&quot;,</code></pre><h4>Potential impact</h4><p>This allows any website to make requests to the edge function, increasing the surface for cross-site attacks if the endpoint is not otherwise properly protected.</p><h4>Recommended fix</h4><p>Restrict allowed origins to the specific domains used by the application.</p>
 <div class="good"><h4>Secure code example</h4><pre><code>&quot;Access-Control-Allow-Origin&quot;: &quot;https://your-app.com&quot;,</code></pre></div>
 </div>
 <div class="card" id="AR-008"><h3><span class="badge" style="background:#b45309">medium</span> AR-008: Overly Permissive Row Level Security (Profiles)</h3><p><span class="pill">Broken Access Control</span><span class="pill">CWE-284</span><span class="pill">A01:2021 Broken Access Control</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/migrations/002_access_policies.sql</code> (lines 9-13)</p><h4>Description</h4><p>The RLS policy allows any authenticated user to view all records in the profiles table.</p><h4>Vulnerable code</h4><pre><code>CREATE POLICY &quot;Users can view profiles&quot;
@@ -137,22 +136,22 @@ FOR SELECT
 TO authenticated
 USING (id = auth.uid());</code></pre></div>
 </div>
-<div class="card" id="AR-009"><h3><span class="badge" style="background:#1d4ed8">low</span> AR-009: Hardcoded credential-like value</h3><p><span class="pill">Identification and Authentication Failures</span><span class="pill">CWE-798</span><span class="pill">A07:2021 Identification and Authentication Failures</span><span class="pill">Needs validation</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>src/lib/demoConfig.ts</code> (line 9)</p><h4>Description</h4><p>A hardcoded API key for an analytics service was found in the configuration file. Hardcoding credentials in source code is a security risk as they are checked into version control.</p><h4>Vulnerable code</h4><pre><code>    apiKey: &quot;&lt;REDACTED:credential:len=35:placeholder-like=yes&gt;&quot;,</code></pre><h4>Potential impact</h4><p>If this is a production key, an attacker could abuse the analytics account, leading to data manipulation or financial costs.</p><h4>Recommended fix</h4><p>Move the API key to an environment variable (e.g., VITE_ANALYTICS_KEY) and access it via import.meta.env.</p>
+<div class="card" id="AR-009"><h3><span class="badge" style="background:#1d4ed8">low</span> AR-009: Hardcoded credential-like value</h3><p><span class="pill">Identification and Authentication Failures</span><span class="pill">CWE-798</span><span class="pill">A07:2021 Identification and Authentication Failures</span><span class="pill">Needs validation</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>src/lib/demoConfig.ts</code> (line 9)</p><h4>Description</h4><p>A hardcoded API key for an analytics service was found in the configuration file. Hardcoding credentials in source code is a security risk as they are checked into version control.</p><h4>Vulnerable code</h4><pre><code>apiKey: &quot;&lt;REDACTED:credential:len=35:placeholder-like=yes&gt;&quot;,</code></pre><h4>Potential impact</h4><p>If this is a production key, an attacker could abuse the analytics account, leading to data manipulation or financial costs.</p><h4>Recommended fix</h4><p>Move the API key to an environment variable (e.g., VITE_ANALYTICS_KEY) and access it via import.meta.env.</p>
 <div class="good"><h4>Secure code example</h4><pre><code>apiKey: import.meta.env.VITE_ANALYTICS_KEY,</code></pre></div>
 <h4>Validation notes</h4><p>Confirm if this is a real production key or a placeholder for development.</p>
 </div>
-<div class="card" id="AR-010"><h3><span class="badge" style="background:#1d4ed8">low</span> AR-010: Insecure Configuration: Debug Mode Enabled</h3><p><span class="pill">Security Misconfiguration</span><span class="pill">CWE-16</span><span class="pill">A05:2021 Security Misconfiguration</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>src/lib/demoConfig.ts</code> (lines 12-14)</p><h4>Description</h4><p>Verbose debugging is enabled in the configuration, which is dangerous if deployed to production.</p><h4>Vulnerable code</h4><pre><code>  debug: {
-    enabled: true,
-    logLevel: &quot;verbose&quot;,</code></pre><h4>Potential impact</h4><p>Excessive logging can expose sensitive internal state, data, or application logic to anyone with access to the console or log output.</p><h4>Recommended fix</h4><p>Disable debug mode by default and use environment variables to toggle it only for development environments.</p>
+<div class="card" id="AR-010"><h3><span class="badge" style="background:#1d4ed8">low</span> AR-010: Insecure Configuration: Debug Mode Enabled</h3><p><span class="pill">Security Misconfiguration</span><span class="pill">CWE-16</span><span class="pill">A05:2021 Security Misconfiguration</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>src/lib/demoConfig.ts</code> (lines 12-14)</p><h4>Description</h4><p>Verbose debugging is enabled in the configuration, which is dangerous if deployed to production.</p><h4>Vulnerable code</h4><pre><code>debug: {
+  enabled: true,
+  logLevel: &quot;verbose&quot;,</code></pre><h4>Potential impact</h4><p>Excessive logging can expose sensitive internal state, data, or application logic to anyone with access to the console or log output.</p><h4>Recommended fix</h4><p>Disable debug mode by default and use environment variables to toggle it only for development environments.</p>
 <div class="good"><h4>Secure code example</h4><pre><code>debug: {
   enabled: import.meta.env.DEV,
   logLevel: import.meta.env.DEV ? &quot;verbose&quot; : &quot;error&quot;,
 },</code></pre></div>
 </div>
-<div class="card" id="AR-011"><h3><span class="badge" style="background:#1d4ed8">low</span> AR-011: Information Disclosure (Sensitive Error Details)</h3><p><span class="pill">Security Misconfiguration</span><span class="pill">CWE-209</span><span class="pill">A05:2021 Security Misconfiguration</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/functions/get-profile/index.ts</code> (lines 42-45)</p><h4>Description</h4><p>The function returns the raw error string to the client in the event of an exception.</p><h4>Vulnerable code</h4><pre><code>  } catch (error) {
-    return Response.json(
-      { error: String(error) },
-      { status: 500 }</code></pre><h4>Potential impact</h4><p>This may reveal internal system details, such as database schema information or stack traces, which can aid an attacker in further exploits.</p><h4>Recommended fix</h4><p>Log the error internally and return a generic error message to the client.</p>
+<div class="card" id="AR-011"><h3><span class="badge" style="background:#1d4ed8">low</span> AR-011: Information Disclosure (Sensitive Error Details)</h3><p><span class="pill">Security Misconfiguration</span><span class="pill">CWE-209</span><span class="pill">A05:2021 Security Misconfiguration</span><span class="pill">Confirmed</span><span class="pill">confidence: high</span></p><p><b>Affected file:</b> <code>supabase/functions/get-profile/index.ts</code> (lines 42-45)</p><h4>Description</h4><p>The function returns the raw error string to the client in the event of an exception.</p><h4>Vulnerable code</h4><pre><code>} catch (error) {
+  return Response.json(
+    { error: String(error) },
+    { status: 500 }</code></pre><h4>Potential impact</h4><p>This may reveal internal system details, such as database schema information or stack traces, which can aid an attacker in further exploits.</p><h4>Recommended fix</h4><p>Log the error internally and return a generic error message to the client.</p>
 <div class="good"><h4>Secure code example</h4><pre><code>  } catch (error) {
     console.error(error);
     return Response.json({ error: &quot;Internal Server Error&quot; }, { status: 500 });

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import json
+import textwrap
 from dataclasses import asdict
 
 from .models import SEVERITIES, Assessment, Finding
@@ -33,8 +34,8 @@ def snippet(asm: Assessment, f: Finding, cap: int = 15) -> str:
     if lines and f.line_start:
         a = f.line_start - 1
         b = min(max(f.line_end, f.line_start), a + cap)
-        return "\n".join(lines[a:b])
-    return f.evidence
+        return textwrap.dedent("\n".join(lines[a:b]))
+    return textwrap.dedent(f.evidence)
 
 
 def loc(f: Finding) -> str:
@@ -156,7 +157,7 @@ h1{{margin:0 0 4px}}h2{{margin-top:36px;border-bottom:2px solid #e2e8f0;padding-
 .counts b{{display:block;font-size:26px}}
 pre{{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto;font-size:13px}}
 .good pre{{background:#052e16}}table{{border-collapse:collapse;width:100%;background:#fff}}th,td{{border:1px solid #e2e8f0;padding:6px 10px;text-align:left;font-size:14px}}
-th{{background:#f1f5f9}}code{{background:#e2e8f0;padding:1px 5px;border-radius:4px}}pre code{{background:none;padding:0}}
+th{{background:#f1f5f9}}td:first-child,th:first-child{{white-space:nowrap}}code{{background:#e2e8f0;padding:1px 5px;border-radius:4px}}pre code{{background:none;padding:0}}
 .note{{background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin:10px 0}}
 @media print{{body{{background:#fff}}.card{{break-inside:avoid}}}}
 </style></head><body>
