@@ -208,7 +208,7 @@ class CacheModelTests(unittest.TestCase):
                 return '{"findings":[{"title":"x"}]}'
 
         with tempfile.TemporaryDirectory() as d:
-            s = Settings("k", "m1", [], 0, 0.0, 0.0, 5, 1, None, 100, d)
+            s = Settings("k", "m1", [], 0, 0.0, 0.0, 5, 1, 100, d)
             c = Fake(s)
             r1 = c.generate_json("sys", "prompt")
             r2 = c.generate_json("sys", "prompt")

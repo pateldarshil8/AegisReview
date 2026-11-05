@@ -32,7 +32,6 @@ class Settings:
     min_interval: float
     timeout: int
     concurrency: int
-    temperature: float | None
     max_output_tokens: int
     cache_dir: str | None
 
@@ -53,7 +52,6 @@ def load_settings(env_file: str | None = None, model: str | None = None) -> Sett
         load_env_file(Path(env_file))
     load_env_file(Path.cwd() / ".env")
     load_env_file(REPO_ROOT / ".env")
-    temp = os.environ.get("AI_TEMPERATURE")
     return Settings(
         api_key=os.environ.get("ANTHROPIC_API_KEY", "").strip(),
         model=(model or os.environ.get("ANTHROPIC_MODEL") or "claude-sonnet-5-5").strip(),
@@ -63,7 +61,6 @@ def load_settings(env_file: str | None = None, model: str | None = None) -> Sett
         min_interval=_num("AI_MIN_INTERVAL_SECONDS", 1.0, float),
         timeout=_num("AI_TIMEOUT_SECONDS", 120, int),
         concurrency=max(1, _num("AI_CONCURRENCY", 3, int)),
-        temperature=float(temp) if temp else None,
         max_output_tokens=_num("AI_MAX_OUTPUT_TOKENS", 32768, int),
         cache_dir=None if os.environ.get("AI_CACHE", "1") == "0" else os.environ.get("AI_CACHE_DIR", str(REPO_ROOT / ".aegis-cache")),
     )

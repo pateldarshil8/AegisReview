@@ -175,8 +175,6 @@ class AnthropicClient(BaseClient):
     def _call(self, model: str, system: str, prompt: str) -> str:
         kwargs = {"model": model, "max_tokens": min(self.s.max_output_tokens, 16000), "system": system,
                   "messages": [{"role": "user", "content": prompt}]}
-        if self.s.temperature is not None:
-            kwargs["temperature"] = self.s.temperature
         resp = self.client.messages.create(**kwargs)
         text = "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text")
         if not text:

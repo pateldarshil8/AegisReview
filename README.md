@@ -18,7 +18,7 @@ Built for the CDF CyberSec Hackathon, *Intelligent Code Security Challenge*. It 
 
 ## Quick start
 
-Requirements: Python 3.9+ and an [Anthropic API key](https://console.anthropic.com/). Git is only needed for scanning git URLs.
+Requirements: Python 3.9 or newer (tested on 3.9 and 3.15) and an [Anthropic API key](https://console.anthropic.com/). Git is only needed for scanning git URLs.
 
 ```bash
 git clone https://github.com/pateldarshil8/AegisReview.git
@@ -66,6 +66,16 @@ ANTHROPIC_MODEL=claude-sonnet-5-5
 See `.env.example` for retry, rate-limit and timeout settings. Never commit `.env` (it is in `.gitignore`).
 
 A normal scan makes 4 AI calls (3 review passes and 1 lead review) and takes about a minute. The client spaces requests out, retries on overload and rate limits, and can rotate to fallback models. Identical requests are cached in `.aegis-cache/`, so re-running the same scan on unchanged code is instant and free; use `--no-cache` to force fresh calls.
+
+## For evaluators: running on an unseen codebase
+
+The tool contains no rules or answers specific to any one application; it analyzes whatever code it is given (TypeScript/JavaScript, Python, Java, Go, Ruby, PHP, C#, Rust, SQL, shell, YAML, Dockerfiles and more).
+
+1. Install as shown in [Quick start](#quick-start) and put an Anthropic API key in `.env` (`ANTHROPIC_API_KEY=...`). The tool needs this key because the analysis is done by Claude; a scan typically takes about a minute and costs a few cents.
+2. Run `python -m aegisreview scan <folder | .zip | git URL> --name "<application name>"`.
+3. Open `reports/<application-name>-security-report.html` (Markdown and JSON versions are written next to it).
+
+Without a key, `--no-ai` still runs an offline pattern-based pass (no code leaves the machine), but findings from that mode are only unverified leads.
 
 ## AI model integration
 
