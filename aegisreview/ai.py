@@ -1,6 +1,6 @@
-"""AI provider clients (Gemini and Claude) behind one interface.
+"""Anthropic Claude client.
 
-Shared behaviour: JSON output parsing, request throttling, retries with backoff,
+Behaviour: JSON output parsing, request throttling, retries with backoff,
 model fallback, response caching, and API key masking.
 """
 from __future__ import annotations
@@ -77,12 +77,12 @@ class BaseClient:
         if not isinstance(code, int):
             code = getattr(e, "status_code", None)
         name = type(e).__name__
-        rate_limited = code == 429 or "RESOURCE_EXHAUSTED" in msg or name == "RateLimitError"
+        rate_limited = code == 429 or name == "RateLimitError"
         retry = (
             rate_limited
             or code in RETRYABLE_CODES
             or (code == 404 and multi_model)  # model retired/unavailable: try the next one
-            or "UNAVAILABLE" in msg
+            or "overloaded" in msg.lower()
             or "timed out" in msg.lower()
             or "Timeout" in name
             or name == "APIConnectionError"
@@ -101,8 +101,7 @@ class BaseClient:
     def _cache_path(self, system: str, prompt: str):
         if not self.s.cache_dir:
             return None
-        prefix = "" if self.provider == "gemini" else self.provider + "\0"  # keeps older Gemini cache entries valid
-        key = hashlib.sha256((prefix + system + "\0" + prompt).encode("utf-8")).hexdigest()
+        key = hashlib.sha256((self.provider + "\0" + system + "\0" + prompt).encode("utf-8")).hexdigest()
         return Path(self.s.cache_dir) / f"{key}.json"
 
     def generate_json(self, system: str, prompt: str, label: str = "call"):
@@ -160,33 +159,6 @@ class BaseClient:
         raise AIError(self._mask(f"{label}: {type(last).__name__}: {last}")[:500])
 
 
-class GeminiClient(BaseClient):
-    provider = "gemini"
-    label = "Google Gemini"
-
-    def __init__(self, settings: Settings):
-        super().__init__(settings)
-        _require_key(settings, "GEMINI_API_KEY")
-        try:
-            from google import genai
-            from google.genai import types
-        except ImportError as e:  # pragma: no cover
-            raise AIError("The 'google-genai' package is missing. Run: pip install -r requirements.txt") from e
-        self._types = types
-        self.client = genai.Client(api_key=settings.api_key, http_options=types.HttpOptions(timeout=settings.timeout * 1000))
-
-    def _call(self, model: str, system: str, prompt: str) -> str:
-        cfg = {"system_instruction": system, "response_mime_type": "application/json",
-               "max_output_tokens": self.s.max_output_tokens}
-        if self.s.temperature is not None:
-            cfg["temperature"] = self.s.temperature
-        resp = self.client.models.generate_content(model=model, contents=prompt,
-                                                   config=self._types.GenerateContentConfig(**cfg))
-        if not resp.text:
-            raise ValueError("empty response (possibly blocked by safety filters)")
-        return resp.text
-
-
 class AnthropicClient(BaseClient):
     provider = "anthropic"
     label = "Anthropic Claude"
@@ -213,6 +185,4 @@ class AnthropicClient(BaseClient):
 
 
 def make_client(settings: Settings) -> BaseClient:
-    if settings.provider == "anthropic":
-        return AnthropicClient(settings)
-    return GeminiClient(settings)
+    return AnthropicClient(settings)

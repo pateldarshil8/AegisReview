@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 from pathlib import Path
@@ -18,13 +17,7 @@ from .report import render_html, render_json, render_markdown, risk_rating, seve
 RENDERERS = {"md": ("md", render_markdown), "html": ("html", render_html), "json": ("json", render_json)}
 
 
-def _apply_provider(args) -> None:
-    if getattr(args, "provider", None):
-        os.environ["AI_PROVIDER"] = args.provider
-
-
 def cmd_check(args) -> int:
-    _apply_provider(args)
     s = load_settings(args.env, args.model)
     from .ai import AIError, make_client
     try:
@@ -38,7 +31,6 @@ def cmd_check(args) -> int:
 
 
 def cmd_scan(args) -> int:
-    _apply_provider(args)
     settings = load_settings(args.env, args.model)
     if args.no_cache:
         settings.cache_dir = None
@@ -58,8 +50,7 @@ def cmd_scan(args) -> int:
         return 2
     try:
         if not args.no_ai:
-            provider_name = "Anthropic Claude" if settings.provider == "anthropic" else "Google Gemini"
-            print(f"Notice: source code (secret-like values redacted) will be sent to {provider_name} ({settings.model}). "
+            print(f"Notice: source code (secret-like values redacted) will be sent to Anthropic Claude ({settings.model}). "
                   "Only analyze code you are authorized to share.", file=sys.stderr)
         asm = analyze(tree, settings, use_ai=not args.no_ai, lenses=lenses, max_batch_chars=args.max_batch_chars)
     finally:
@@ -99,8 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("-o", "--out", default="reports", help="output directory (default: reports)")
     s.add_argument("--formats", default="md,html,json", help="comma list of: md, html, json")
     s.add_argument("--name", help="application name for the report")
-    s.add_argument("--provider", choices=["gemini", "anthropic"], help="AI provider (default: AI_PROVIDER from .env)")
-    s.add_argument("--model", help="override the configured model")
+    s.add_argument("--model", help="override ANTHROPIC_MODEL")
     s.add_argument("--env", help="path to a .env file")
     s.add_argument("--lenses", default="all", help=f"comma list of review passes (default all): {', '.join(LENSES)}")
     s.add_argument("--max-batch-chars", type=int, default=250_000, help="split very large projects into batches of this size")
@@ -110,7 +100,6 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(func=cmd_scan)
 
     c = sub.add_parser("check", help="verify the API key and model name")
-    c.add_argument("--provider", choices=["gemini", "anthropic"])
     c.add_argument("--model")
     c.add_argument("--env")
     c.set_defaults(func=cmd_check)
