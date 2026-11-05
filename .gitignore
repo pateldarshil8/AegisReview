@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+reports/
+test-targets/
+.DS_Store
+.aegis-cache/
